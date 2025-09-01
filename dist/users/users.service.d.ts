@@ -6,26 +6,30 @@ export declare class UsersService {
     private checkAdmin;
     createUser(currentUserId: number, dto: CreateUserDto): Promise<{
         id: number;
-        userName: string;
-        email: string;
         fullName: string;
-        password: string;
+        userName: string;
+        profileImage: string | null;
+        email: string;
         role: import(".prisma/client").$Enums.Role;
+    } | {
+        message: string;
     }>;
     updateUser(currentUserId: number, id: number, dto: UpdateUserDto): Promise<{
         id: number;
-        userName: string;
-        email: string;
         fullName: string;
-        password: string;
+        userName: string;
+        profileImage: string | null;
+        email: string;
         role: import(".prisma/client").$Enums.Role;
+    } | {
+        message: string;
     }>;
     deleteUser(currentUserId: number, id: number): Promise<{
         id: number;
-        userName: string;
-        email: string;
         fullName: string;
-        password: string;
+        userName: string;
+        profileImage: string | null;
+        email: string;
         role: import(".prisma/client").$Enums.Role;
     }>;
     getAllUsers(currentUserId: number, page?: number, searchFilters?: {
@@ -40,9 +44,9 @@ export declare class UsersService {
         currentPage: number;
         users: {
             id: number;
+            fullName: string;
             userName: string;
             email: string;
-            fullName: string;
             role: import(".prisma/client").$Enums.Role;
         }[];
     }>;

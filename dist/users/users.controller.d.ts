@@ -5,26 +5,30 @@ export declare class UsersController {
     constructor(usersService: UsersService);
     createUser(req: any, dto: CreateUserDto): Promise<{
         id: number;
-        userName: string;
-        email: string;
         fullName: string;
-        password: string;
+        userName: string;
+        profileImage: string | null;
+        email: string;
         role: import(".prisma/client").$Enums.Role;
+    } | {
+        message: string;
     }>;
     updateUser(req: any, id: number, dto: UpdateUserDto): Promise<{
         id: number;
-        userName: string;
-        email: string;
         fullName: string;
-        password: string;
+        userName: string;
+        profileImage: string | null;
+        email: string;
         role: import(".prisma/client").$Enums.Role;
+    } | {
+        message: string;
     }>;
     deleteUser(req: any, id: number): Promise<{
         id: number;
-        userName: string;
-        email: string;
         fullName: string;
-        password: string;
+        userName: string;
+        profileImage: string | null;
+        email: string;
         role: import(".prisma/client").$Enums.Role;
     }>;
     getAllUsers(page: number, req: any, limit: number, id?: number, fullName?: string, userName?: string, email?: string): Promise<{
@@ -33,9 +37,9 @@ export declare class UsersController {
         currentPage: number;
         users: {
             id: number;
+            fullName: string;
             userName: string;
             email: string;
-            fullName: string;
             role: import(".prisma/client").$Enums.Role;
         }[];
     }>;

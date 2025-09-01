@@ -59,8 +59,20 @@ let UsersService = class UsersService {
     }
     async createUser(currentUserId, dto) {
         await this.checkAdmin(currentUserId);
+        const existingUserName = await this.prisma.user.findUnique({
+            where: { userName: dto.userName },
+        });
+        if (existingUserName) {
+            return { message: 'Username already exists' };
+        }
+        const existingEmail = await this.prisma.user.findUnique({
+            where: { email: dto.email },
+        });
+        if (existingEmail) {
+            return { message: 'Email already exists' };
+        }
         const hashedPassword = await bcrypt.hash(dto.password, 10);
-        return this.prisma.user.create({
+        const user = await this.prisma.user.create({
             data: {
                 fullName: dto.fullName,
                 userName: dto.userName,
@@ -69,27 +81,41 @@ let UsersService = class UsersService {
                 role: dto.role ?? client_1.Role.USER,
             },
         });
+        const { password, ...result } = user;
+        return result;
     }
     async updateUser(currentUserId, id, dto) {
         await this.checkAdmin(currentUserId);
         const user = await this.prisma.user.findUnique({ where: { id } });
         if (!user)
             throw new common_1.NotFoundException('User not found');
+        if (dto.userName) {
+            const existingUser = await this.prisma.user.findUnique({
+                where: { userName: dto.userName },
+            });
+            if (existingUser && existingUser.id !== id) {
+                return { message: 'Username already exists' };
+            }
+        }
         let updatedData = { ...dto };
         if (dto.password) {
             updatedData.password = await bcrypt.hash(dto.password, 10);
         }
-        return this.prisma.user.update({
+        const updatedUser = await this.prisma.user.update({
             where: { id },
             data: updatedData,
         });
+        const { password, ...result } = updatedUser;
+        return result;
     }
     async deleteUser(currentUserId, id) {
         await this.checkAdmin(currentUserId);
         const user = await this.prisma.user.findUnique({ where: { id } });
         if (!user)
             throw new common_1.NotFoundException('User not found');
-        return this.prisma.user.delete({ where: { id } });
+        const deletedUser = await this.prisma.user.delete({ where: { id } });
+        const { password, ...result } = deletedUser;
+        return result;
     }
     async getAllUsers(currentUserId, page = 1, searchFilters) {
         await this.checkAdmin(currentUserId);

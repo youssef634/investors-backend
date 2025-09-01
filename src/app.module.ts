@@ -9,6 +9,7 @@ import { PrismaService } from './prisma/prisma.service/prisma.service';
 import { JwtStrategy } from './auth/strategy';
 import { LoginModule } from './auth/login/login.module';
 import { UsersModule } from './users/users.module';
+import { ProfileModule } from './profile/profile.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { UsersModule } from './users/users.module';
     PrismaModule,
     LoginModule,
     UsersModule,
+    ProfileModule,
     
   ],
   controllers: [AppController],

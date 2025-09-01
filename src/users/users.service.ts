@@ -6,7 +6,7 @@ import { Role } from '@prisma/client';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   private async checkAdmin(userId: number) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -18,9 +18,27 @@ export class UsersService {
   async createUser(currentUserId: number, dto: CreateUserDto) {
     await this.checkAdmin(currentUserId);
 
+    // Check if username exists
+    const existingUserName = await this.prisma.user.findUnique({
+      where: { userName: dto.userName },
+    });
+    if (existingUserName) {
+      return { message: 'Username already exists' };
+    }
+
+    // Check if email exists
+    const existingEmail = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
+    if (existingEmail) {
+      return { message: 'Email already exists' };
+    }
+
+    // Hash password
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-    return this.prisma.user.create({
+    // Create user
+    const user = await this.prisma.user.create({
       data: {
         fullName: dto.fullName,
         userName: dto.userName,
@@ -29,6 +47,10 @@ export class UsersService {
         role: dto.role ?? Role.USER,
       },
     });
+
+    // Exclude password from response
+    const { password, ...result } = user;
+    return result;
   }
 
   async updateUser(currentUserId: number, id: number, dto: UpdateUserDto) {
@@ -37,16 +59,28 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
 
+    if (dto.userName) {
+      const existingUser = await this.prisma.user.findUnique({
+        where: { userName: dto.userName },
+      });
+      if (existingUser && existingUser.id !== id) {
+        return { message: 'Username already exists' };
+      }
+    }
+
     let updatedData: any = { ...dto };
 
     if (dto.password) {
       updatedData.password = await bcrypt.hash(dto.password, 10);
     }
 
-    return this.prisma.user.update({
+    const updatedUser = await this.prisma.user.update({
       where: { id },
       data: updatedData,
     });
+
+    const { password, ...result } = updatedUser;
+    return result;
   }
 
   async deleteUser(currentUserId: number, id: number) {
@@ -55,7 +89,10 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
 
-    return this.prisma.user.delete({ where: { id } });
+    const deletedUser = await this.prisma.user.delete({ where: { id } });
+
+    const { password, ...result } = deletedUser;
+    return result;
   }
 
   async getAllUsers(
@@ -71,7 +108,7 @@ export class UsersService {
   ) {
     await this.checkAdmin(currentUserId);
 
-     const limit = searchFilters?.limit && searchFilters.limit > 0 ? searchFilters.limit : 10;
+    const limit = searchFilters?.limit && searchFilters.limit > 0 ? searchFilters.limit : 10;
     const filters: any = {};
     if (searchFilters?.id) filters.id = searchFilters.id;
     if (searchFilters?.fullName) filters.fullName = { contains: searchFilters.fullName, mode: 'insensitive' };

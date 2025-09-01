@@ -18,6 +18,7 @@ const prisma_service_1 = require("./prisma/prisma.service/prisma.service");
 const strategy_1 = require("./auth/strategy");
 const login_module_1 = require("./auth/login/login.module");
 const users_module_1 = require("./users/users.module");
+const profile_module_1 = require("./profile/profile.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -41,6 +42,7 @@ exports.AppModule = AppModule = __decorate([
             prisma_module_1.PrismaModule,
             login_module_1.LoginModule,
             users_module_1.UsersModule,
+            profile_module_1.ProfileModule,
         ],
         controllers: [app_controller_1.AppController],
         providers: [app_service_1.AppService, config_1.ConfigService, prisma_service_1.PrismaService, strategy_1.JwtStrategy],
