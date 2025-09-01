@@ -5,20 +5,20 @@ export declare class ProfileService {
     constructor(prisma: PrismaService);
     getProfile(userId: number): Promise<{
         id: number;
-        userName: string;
-        email: string;
         fullName: string;
+        userName: string;
         profileImage: string | null;
+        email: string;
         role: import(".prisma/client").$Enums.Role;
     }>;
     updateName(userId: number, fullName: string): Promise<{
         message: string;
         user: {
             id: number;
-            userName: string;
-            email: string;
             fullName: string;
+            userName: string;
             profileImage: string | null;
+            email: string;
             role: import(".prisma/client").$Enums.Role;
         };
     }>;
@@ -26,10 +26,10 @@ export declare class ProfileService {
         message: string;
         user: {
             id: number;
-            userName: string;
-            email: string;
             fullName: string;
+            userName: string;
             profileImage: string | null;
+            email: string;
             role: import(".prisma/client").$Enums.Role;
         };
     }>;
@@ -37,10 +37,10 @@ export declare class ProfileService {
         message: string;
         user: {
             id: number;
-            userName: string;
-            email: string;
             fullName: string;
+            userName: string;
             profileImage: string | null;
+            email: string;
             role: import(".prisma/client").$Enums.Role;
         };
     }>;
@@ -51,10 +51,10 @@ export declare class ProfileService {
         message: string;
         user: {
             id: number;
-            userName: string;
-            email: string;
             fullName: string;
+            userName: string;
             profileImage: string | null;
+            email: string;
             role: import(".prisma/client").$Enums.Role;
         };
     }>;

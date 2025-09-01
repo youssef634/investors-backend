@@ -5,20 +5,20 @@ export declare class ProfileController {
     constructor(profileService: ProfileService);
     getProfile(req: any): Promise<{
         id: number;
-        userName: string;
-        email: string;
         fullName: string;
+        userName: string;
         profileImage: string | null;
+        email: string;
         role: import(".prisma/client").$Enums.Role;
     }>;
     updateName(req: any, fullName: string): Promise<{
         message: string;
         user: {
             id: number;
-            userName: string;
-            email: string;
             fullName: string;
+            userName: string;
             profileImage: string | null;
+            email: string;
             role: import(".prisma/client").$Enums.Role;
         };
     }>;
@@ -26,10 +26,10 @@ export declare class ProfileController {
         message: string;
         user: {
             id: number;
-            userName: string;
-            email: string;
             fullName: string;
+            userName: string;
             profileImage: string | null;
+            email: string;
             role: import(".prisma/client").$Enums.Role;
         };
     }>;
@@ -37,10 +37,10 @@ export declare class ProfileController {
         message: string;
         user: {
             id: number;
-            userName: string;
-            email: string;
             fullName: string;
+            userName: string;
             profileImage: string | null;
+            email: string;
             role: import(".prisma/client").$Enums.Role;
         };
     }>;
@@ -51,10 +51,10 @@ export declare class ProfileController {
         message: string;
         user: {
             id: number;
-            userName: string;
-            email: string;
             fullName: string;
+            userName: string;
             profileImage: string | null;
+            email: string;
             role: import(".prisma/client").$Enums.Role;
         };
     }>;
