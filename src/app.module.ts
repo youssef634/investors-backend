@@ -10,6 +10,7 @@ import { JwtStrategy } from './auth/strategy';
 import { LoginModule } from './auth/login/login.module';
 import { UsersModule } from './users/users.module';
 import { ProfileModule } from './profile/profile.module';
+import { InvestorsModule } from './investors/investors.module';
 
 @Module({
   imports: [
@@ -34,6 +35,10 @@ import { ProfileModule } from './profile/profile.module';
     LoginModule,
     UsersModule,
     ProfileModule,
+<<<<<<< HEAD
+=======
+    InvestorsModule,
+>>>>>>> 0f8ef4c6aaefdbd24580ed0de908393f47d196ec
     
   ],
   controllers: [AppController],
