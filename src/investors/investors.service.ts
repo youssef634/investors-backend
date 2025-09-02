@@ -1,9 +1,4 @@
-import {
-    BadRequestException,
-    ForbiddenException,
-    Injectable,
-    NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service/prisma.service';
 import { Role } from '@prisma/client';
 
@@ -18,54 +13,33 @@ export class InvestorsService {
         }
     }
 
-    async addInvestor(
-        currentUserId: number,
-        data: { userName: string; phone: string; amount: number },
-    ) {
+    async addInvestor(currentUserId: number, userId: number, amount: number) {
         await this.checkAdmin(currentUserId);
 
-        const user = await this.prisma.user.findUnique({
-            where: { userName: data.userName },
-        });
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user) throw new BadRequestException('User not found');
 
-        if (!user) {
-            throw new BadRequestException(
-                `User with username "${data.userName}" does not exist`,
-            );
-        }
+        const existingInvestor = await this.prisma.investors.findUnique({ where: { userId } });
+        if (existingInvestor) throw new BadRequestException('User already invested');
 
         return this.prisma.investors.create({
-            data: {
-                ...data,
-                createdAt: new Date(),
-            },
+            data: { userId, amount, createdAt: new Date() },
         });
     }
 
-    async updateInvestor(
-        currentUserId: number,
-        id: number,
-        data: Partial<{ phone: string; amount: number; createdAt: Date }>,
-    ) {
+    async updateInvestor(currentUserId: number, id: number, amount: number) {
         await this.checkAdmin(currentUserId);
-
-        const allowedFields: any = {};
-        if (data.phone !== undefined) allowedFields.phone = data.phone;
-        if (data.amount !== undefined) allowedFields.amount = data.amount;
-        if (data.createdAt !== undefined) allowedFields.createdAt = data.createdAt;
 
         return this.prisma.investors.update({
             where: { id },
-            data: allowedFields,
+            data: { amount },
         });
     }
 
     async deleteInvestor(currentUserId: number, id: number) {
         await this.checkAdmin(currentUserId);
 
-        return this.prisma.investors.delete({
-            where: { id },
-        });
+        return this.prisma.investors.delete({ where: { id } });
     }
 
     async getInvestors(
@@ -73,13 +47,12 @@ export class InvestorsService {
         page: number = 1,
         searchFilters?: {
             limit?: number;
+            userId?: number;
             search?: any;
-            phone?: string; 
-            userName?: string;
             minAmount?: number;
             maxAmount?: number;
-            startDate?: string; // ISO string
-            endDate?: string;   // ISO string
+            startDate?: string;
+            endDate?: string;
             minShare?: number;
             maxShare?: number;
         },
@@ -88,57 +61,69 @@ export class InvestorsService {
 
         const limit = searchFilters?.limit && searchFilters.limit > 0 ? searchFilters.limit : 10;
 
-        // Build filters for pagination/search
         const filters: any = {};
+
+        // Search filter
         if (searchFilters?.search) {
-            filters.OR = [
-                { userName: { contains: searchFilters.search, mode: 'insensitive' } },
-                { phone: { contains: searchFilters.search, mode: 'insensitive' } },
-                // Remove contains filter for numeric/date fields
-                { amount: { equals: Number(searchFilters.search) || undefined } },
+            const orFilters: any[] = [
+                { user: { fullName: { contains: searchFilters.search, mode: 'insensitive' } } },
+                { user: { phone: { contains: searchFilters.search, mode: 'insensitive' } } },
             ];
+
+            const amountSearch = Number(searchFilters.search);
+            if (!isNaN(amountSearch)) {
+                orFilters.push({ amount: { equals: amountSearch } });
+            }
+
+            filters.OR = orFilters;
         }
-        if (searchFilters?.phone)
-            filters.phone = { contains: searchFilters.phone, mode: 'insensitive' };
-        if (searchFilters?.userName)
-            filters.userName = { contains: searchFilters.userName, mode: 'insensitive' };
-        if (searchFilters?.minAmount !== undefined || searchFilters?.maxAmount !== undefined)
-            filters.amount = {
-                gte: searchFilters.minAmount ?? undefined,
-                lte: searchFilters.maxAmount ?? undefined,
-            };
-        if (searchFilters?.startDate || searchFilters?.endDate)
-            filters.createdAt = {
-                gte: searchFilters.startDate ? new Date(searchFilters.startDate) : undefined,
-                lte: searchFilters.endDate ? new Date(searchFilters.endDate) : undefined,
-            };
 
-        // Count total investors for pagination
+        // Specific user filter
+        if (searchFilters?.userId) {
+            filters.userId = searchFilters.userId;
+        }
+
+        // Amount range filter
+        if (searchFilters?.minAmount !== undefined || searchFilters?.maxAmount !== undefined) {
+            filters.amount = {};
+            if (searchFilters.minAmount !== undefined) filters.amount.gte = searchFilters.minAmount;
+            if (searchFilters.maxAmount !== undefined) filters.amount.lte = searchFilters.maxAmount;
+        }
+
+        // Date range filter
+        if (searchFilters?.startDate || searchFilters?.endDate) {
+            filters.createdAt = {};
+            if (searchFilters.startDate) filters.createdAt.gte = new Date(searchFilters.startDate);
+            if (searchFilters.endDate) filters.createdAt.lte = new Date(searchFilters.endDate);
+        }
+
+        // Pagination
         const totalInvestors = await this.prisma.investors.count({ where: filters });
-
         const totalPages = Math.ceil(totalInvestors / limit);
         if (page > totalPages && totalInvestors > 0) throw new NotFoundException('Page not found');
 
         const skip = (page - 1) * limit;
 
-        // Fetch paginated investors
         const investors = await this.prisma.investors.findMany({
             where: filters,
             skip,
             take: limit,
             orderBy: { createdAt: 'desc' },
+            include: { user: { select: { fullName: true } } },
         });
 
-        // Calculate sharePercentage using ALL investors, ignoring pagination/search filters
         const totalAmountAll = (await this.prisma.investors.aggregate({ _sum: { amount: true } }))._sum.amount || 0;
 
         const investorsWithShares = investors
-            .map((inv) => ({
-                ...inv,
+            .map(inv => ({
+                id: inv.id,
+                userId: inv.userId,
+                fullName: inv.user.fullName,
+                amount: inv.amount,
+                createdAt: inv.createdAt,
                 sharePercentage: totalAmountAll > 0 ? (inv.amount / totalAmountAll) * 100 : 0,
             }))
-            // Apply share percentage filter AFTER calculating using all investors
-            .filter((inv) => {
+            .filter(inv => {
                 if (searchFilters?.minShare !== undefined && inv.sharePercentage < searchFilters.minShare) return false;
                 if (searchFilters?.maxShare !== undefined && inv.sharePercentage > searchFilters.maxShare) return false;
                 return true;

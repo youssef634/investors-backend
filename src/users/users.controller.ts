@@ -14,11 +14,7 @@ export class UsersController {
   }
 
   @Patch(':id')
-  async updateUser(
-    @Req() req,
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateUserDto,
-  ) {
+  async updateUser(@Req() req, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserDto) {
     return this.usersService.updateUser(req.user.id, id, dto);
   }
 
@@ -27,16 +23,16 @@ export class UsersController {
     return this.usersService.deleteUser(req.user.id, id);
   }
 
-  @Get(":page")
+  @Get(':page')
   async getAllUsers(
-    @Param('page') page: number ,
+    @Param('page', ParseIntPipe) page: number,
     @Req() req,
-    @Query('limit') limit: number,
+    @Query('limit') limit?: number,
     @Query('search') search?: string,
   ) {
-    return this.usersService.getAllUsers(req.user.id, Number(page),{
+    return this.usersService.getAllUsers(req.user.id, page, {
       limit: limit ? Number(limit) : undefined,
-      search: search ? search : undefined,
+      search,
     });
   }
 }

@@ -48,29 +48,27 @@ export class ProfileService {
         if (!user) throw new BadRequestException('User not found');
 
         const uploadDir = path.join(process.cwd(), 'uploads', 'profiles');
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
+        if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
         let imageUrl = user.profileImage;
 
-        if (file) {
+        // Helper: delete old profile image
+        const deleteOldImage = () => {
             if (imageUrl?.startsWith('http://localhost:5000/uploads/profiles/')) {
                 const oldPath = path.join(uploadDir, path.basename(imageUrl));
                 if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
             }
-            const fileName = `${userId}_${Date.now()}${path.extname(
-                file.originalname,
-            )}`;
+        };
+
+        if (file) {
+            deleteOldImage();
+            const fileName = `${userId}_${Date.now()}${path.extname(file.originalname)}`;
             const filePath = path.join(uploadDir, fileName);
             fs.writeFileSync(filePath, file.buffer);
             imageUrl = `http://localhost:5000/uploads/profiles/${fileName}`;
 
         } else if (image && /^data:image\/[a-z]+;base64,/.test(image)) {
-            if (imageUrl?.startsWith('http://localhost:5000/uploads/profiles/')) {
-                const oldPath = path.join(uploadDir, path.basename(imageUrl));
-                if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-            }
+            deleteOldImage();
             const matches = image.match(/^data:image\/([a-z]+);base64,(.+)$/);
             const ext = matches ? matches[1] : 'jpg';
             const base64Data = matches ? matches[2] : '';
@@ -78,22 +76,18 @@ export class ProfileService {
             const filePath = path.join(uploadDir, fileName);
             fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
             imageUrl = `http://localhost:5000/uploads/profiles/${fileName}`;
-        } else if (
-            image &&
-            /^https?:\/\//i.test(image) &&
-            !image.startsWith('http://localhost:5000/uploads/profiles/')
-        ) {
-            if (imageUrl?.startsWith('http://localhost:5000/uploads/profiles/')) {
-                const oldPath = path.join(uploadDir, path.basename(imageUrl));
-                if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-            }
+
+        } else if (image && /^https?:\/\//i.test(image) && !image.startsWith('http://localhost:5000/uploads/profiles/')) {
+            deleteOldImage();
             const response = await axios.get(image, { responseType: 'arraybuffer' });
             const ext = response.headers['content-type']?.split('/')[1] || 'jpg';
             const fileName = `${userId}_${Date.now()}_url.${ext}`;
             const filePath = path.join(uploadDir, fileName);
             fs.writeFileSync(filePath, response.data);
             imageUrl = `http://localhost:5000/uploads/profiles/${fileName}`;
+
         } else if (image?.startsWith('http://localhost:5000/uploads/profiles/')) {
+            // keep current image
             imageUrl = image;
         }
 
