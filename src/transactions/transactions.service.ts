@@ -25,6 +25,7 @@ export class TransactionsService {
         const investor = await this.prisma.investors.findUnique({ where: { userId: dto.userId } });
         if (!investor) throw new BadRequestException('User is not an investor');
 
+        // Load settings (user-specific or fallback to first)
         let settings = await this.prisma.settings.findUnique({ where: { userId: dto.userId } });
         if (!settings) {
             settings = await this.prisma.settings.findFirst();
@@ -33,17 +34,23 @@ export class TransactionsService {
             }
         }
 
+        // Convert amount to IQD if needed
+        let amountInIQD = dto.amount;
+        if (settings.defaultCurrency === 'USD') {
+            amountInIQD = dto.amount * settings.USDtoIQD;
+        }
+
         // Start transaction to ensure atomicity
         const result = await this.prisma.$transaction(async (prisma) => {
             // Update investor amount based on transaction type
             let updatedAmount = investor.amount;
             if (dto.type === 'deposit') {
-                updatedAmount += dto.amount;
+                updatedAmount += amountInIQD;
             } else if (dto.type === 'withdrawal') {
-                if (dto.amount > investor.amount) {
+                if (amountInIQD > investor.amount) {
                     throw new BadRequestException('Withdrawal amount exceeds investor balance');
                 }
-                updatedAmount -= dto.amount;
+                updatedAmount -= amountInIQD;
             }
 
             await prisma.investors.update({
@@ -51,12 +58,12 @@ export class TransactionsService {
                 data: { amount: updatedAmount },
             });
 
-            // Create the transaction
+            // Create the transaction (store original currency & amount)
             const transaction = await prisma.transaction.create({
                 data: {
                     userId: dto.userId,
                     type: dto.type,
-                    amount: dto.amount,
+                    amount: dto.amount, // keep original input
                     currency: settings.defaultCurrency,
                     date: new Date(),
                 },
