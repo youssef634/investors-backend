@@ -48,7 +48,7 @@ export class InvestorsService {
         searchFilters?: {
             limit?: number;
             userId?: number;
-            search?: any;
+            fullName?: any;
             minAmount?: number;
             maxAmount?: number;
             startDate?: string;
@@ -64,17 +64,10 @@ export class InvestorsService {
         const filters: any = {};
 
         // Search filter
-        if (searchFilters?.search) {
+        if (searchFilters?.fullName) {
             const orFilters: any[] = [
-                { user: { fullName: { contains: searchFilters.search, mode: 'insensitive' } } },
-                { user: { phone: { contains: searchFilters.search, mode: 'insensitive' } } },
+                { user: { fullName: { contains: searchFilters.fullName, mode: 'insensitive' } } },
             ];
-
-            const amountSearch = Number(searchFilters.search);
-            if (!isNaN(amountSearch)) {
-                orFilters.push({ amount: { equals: amountSearch } });
-            }
-
             filters.OR = orFilters;
         }
 
