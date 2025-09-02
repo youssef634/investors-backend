@@ -80,7 +80,7 @@ export class TransactionsService {
         const user = await this.prisma.user.findUnique({ where: { id: currentUserId } });
         if (!user) throw new ForbiddenException('User not found');
 
-        const limit = query?.limit && query.limit > 0 ? query.limit : 10;
+        const limit = query?.limit && query.limit > 0 ? Number(query.limit) : 10;
         const filters: any = {};
 
         if (query?.type) filters.type = query.type;
