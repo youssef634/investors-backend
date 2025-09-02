@@ -25,8 +25,13 @@ export class TransactionsService {
         const investor = await this.prisma.investors.findUnique({ where: { userId: dto.userId } });
         if (!investor) throw new BadRequestException('User is not an investor');
 
-        //const settings = await this.prisma.settings.findFirst();
-        //if (!settings) throw new BadRequestException('Settings not found');
+        let settings = await this.prisma.settings.findUnique({ where: { userId: dto.userId } });
+        if (!settings) {
+            settings = await this.prisma.settings.findFirst();
+            if (!settings) {
+                throw new BadRequestException('Settings not found');
+            }
+        }
 
         // Start transaction to ensure atomicity
         const result = await this.prisma.$transaction(async (prisma) => {
@@ -52,7 +57,7 @@ export class TransactionsService {
                     userId: dto.userId,
                     type: dto.type,
                     amount: dto.amount,
-                    currency: 'IQD',
+                    currency: settings.defaultCurrency,
                     date: new Date(),
                 },
             });
@@ -107,7 +112,7 @@ export class TransactionsService {
         const transactions = await this.prisma.transaction.findMany({
             where: filters,
             skip,
-            take: limit,
+            take: Number(limit),
             orderBy: { date: 'desc' },
             include: { user: { select: { fullName: true, phone: true } } },
         });
