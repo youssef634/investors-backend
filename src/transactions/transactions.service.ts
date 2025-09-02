@@ -107,8 +107,15 @@ export class TransactionsService {
                 lte: query?.endDate ? new Date(query.endDate) : undefined,
             };
 
-        // Users can see only their own transactions
-        if (user.role !== Role.ADMIN) filters.userId = currentUserId;
+        // If admin -> allow filtering by userId
+        if (user.role === Role.ADMIN) {
+            if (query?.userId) {
+                filters.userId = Number(query.userId);
+            }
+        } else {
+            // Non-admins can only see their own transactions
+            filters.userId = currentUserId;
+        }
 
         const totalTransactions = await this.prisma.transaction.count({ where: filters });
         const totalPages = Math.ceil(totalTransactions / limit);

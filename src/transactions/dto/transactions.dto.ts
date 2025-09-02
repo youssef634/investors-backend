@@ -22,6 +22,9 @@ export class GetTransactionsDto {
   type?: TransactionType;
 
   @IsOptional()
+  userId: number;
+
+  @IsOptional()
   minAmount?: number;
 
   @IsOptional()
