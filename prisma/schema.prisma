@@ -38,10 +38,13 @@ model investors {
 
 model Transaction {
   id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
+  userId    Int
+  type      String   // 'deposit', 'withdrawal', 'profit'
+  amount    Float
+  currency  String
+  date      DateTime @default(now())
 
-  userId Int
-  user   User @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
 }
 
 enum Role {
