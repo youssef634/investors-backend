@@ -34,10 +34,7 @@ export declare class UsersService {
     }>;
     getAllUsers(currentUserId: number, page?: number, searchFilters?: {
         limit?: number;
-        id?: number;
-        fullName?: string;
-        userName?: string;
-        email?: string;
+        search?: string;
     }): Promise<{
         totalUsers: number;
         totalPages: number;

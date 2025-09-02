@@ -30,13 +30,10 @@ let UsersController = class UsersController {
     async deleteUser(req, id) {
         return this.usersService.deleteUser(req.user.id, id);
     }
-    async getAllUsers(page, req, limit, id, fullName, userName, email) {
+    async getAllUsers(page, req, limit, search) {
         return this.usersService.getAllUsers(req.user.id, Number(page), {
             limit: limit ? Number(limit) : undefined,
-            id: id ? Number(id) : undefined,
-            fullName,
-            userName,
-            email,
+            search: search ? search : undefined,
         });
     }
 };
@@ -71,12 +68,9 @@ __decorate([
     __param(0, (0, common_1.Param)('page')),
     __param(1, (0, common_1.Req)()),
     __param(2, (0, common_1.Query)('limit')),
-    __param(3, (0, common_1.Query)('id')),
-    __param(4, (0, common_1.Query)('fullName')),
-    __param(5, (0, common_1.Query)('userName')),
-    __param(6, (0, common_1.Query)('email')),
+    __param(3, (0, common_1.Query)('search')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Number, Object, Number, Number, String, String, String]),
+    __metadata("design:paramtypes", [Number, Object, Number, String]),
     __metadata("design:returntype", Promise)
 ], UsersController.prototype, "getAllUsers", null);
 exports.UsersController = UsersController = __decorate([

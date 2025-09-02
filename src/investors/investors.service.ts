@@ -73,9 +73,9 @@ export class InvestorsService {
         page: number = 1,
         searchFilters?: {
             limit?: number;
-            id?: number;
+            search?: string;
+            phone?: string; 
             userName?: string;
-            phone?: string;
             minAmount?: number;
             maxAmount?: number;
             startDate?: string; // ISO string
@@ -90,11 +90,18 @@ export class InvestorsService {
 
         // Build filters for pagination/search
         const filters: any = {};
-        if (searchFilters?.id) filters.id = searchFilters.id;
-        if (searchFilters?.userName)
-            filters.userName = { contains: searchFilters.userName, mode: 'insensitive' };
+        if (searchFilters?.search) {
+            filters.OR = [
+                { userName: { contains: searchFilters.search, mode: 'insensitive' } },
+                { phone: { contains: searchFilters.search, mode: 'insensitive' } },
+                // Remove contains filter for numeric/date fields
+                { amount: { equals: Number(searchFilters.search) || undefined } },
+            ];
+        }
         if (searchFilters?.phone)
             filters.phone = { contains: searchFilters.phone, mode: 'insensitive' };
+        if (searchFilters?.userName)
+            filters.userName = { contains: searchFilters.userName, mode: 'insensitive' };
         if (searchFilters?.minAmount !== undefined || searchFilters?.maxAmount !== undefined)
             filters.amount = {
                 gte: searchFilters.minAmount ?? undefined,

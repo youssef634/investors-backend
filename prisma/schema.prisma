@@ -23,19 +23,11 @@ model User {
   password       String
   role           Role     @default(USER)
 
-<<<<<<< HEAD
-  contributions Contribution[]
-  transactions  Transaction[] 
-}
-
-model Contribution {
-=======
   investors investors[]
   transactions  Transaction[] 
 }
 
 model investors {
->>>>>>> 0f8ef4c6aaefdbd24580ed0de908393f47d196ec
   id        Int      @id @default(autoincrement())
   userName  String
   phone     String

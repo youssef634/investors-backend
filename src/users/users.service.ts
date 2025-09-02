@@ -100,27 +100,29 @@ export class UsersService {
     page: number = 1,
     searchFilters?: {
       limit?: number;
-      id?: number;
-      fullName?: string;
-      userName?: string;
-      email?: string;
+      search?: string;  
     },
   ) {
     await this.checkAdmin(currentUserId);
-
+  
     const limit = searchFilters?.limit && searchFilters.limit > 0 ? searchFilters.limit : 10;
     const filters: any = {};
-    if (searchFilters?.id) filters.id = searchFilters.id;
-    if (searchFilters?.fullName) filters.fullName = { contains: searchFilters.fullName, mode: 'insensitive' };
-    if (searchFilters?.userName) filters.userName = { contains: searchFilters.userName, mode: 'insensitive' };
-    if (searchFilters?.email) filters.email = { contains: searchFilters.email, mode: 'insensitive' };
-
+    
+    if (searchFilters?.search) {
+      filters.OR = [  
+        // Remove the ID search since it's an integer field
+        { fullName: { contains: searchFilters.search, mode: 'insensitive' } },
+        { userName: { contains: searchFilters.search, mode: 'insensitive' } },
+        { email: { contains: searchFilters.search, mode: 'insensitive' } },
+      ];
+    }
+    
     const totalUsers = await this.prisma.user.count({ where: filters });
     const totalPages = Math.ceil(totalUsers / limit);
     if (page > totalPages && totalUsers > 0) throw new NotFoundException('Page not found');
-
+  
     const skip = (page - 1) * limit;
-
+  
     const users = await this.prisma.user.findMany({
       where: filters,
       skip,
@@ -133,7 +135,7 @@ export class UsersService {
         role: true,
       },
     });
-
+  
     return {
       totalUsers,
       totalPages,

@@ -31,7 +31,7 @@ export declare class UsersController {
         email: string;
         role: import(".prisma/client").$Enums.Role;
     }>;
-    getAllUsers(page: number, req: any, limit: number, id?: number, fullName?: string, userName?: string, email?: string): Promise<{
+    getAllUsers(page: number, req: any, limit: number, search?: string): Promise<{
         totalUsers: number;
         totalPages: number;
         currentPage: number;

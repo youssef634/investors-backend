@@ -48,7 +48,7 @@ export class InvestorsController {
         @Req() req,
         @Param('page') page: number,
         @Query('limit') limit?: number,
-        @Query('id') id?: number,
+        @Query('search') search?: string,
         @Query('userName') userName?: string,
         @Query('phone') phone?: string,
         @Query('minAmount') minAmount?: number,
@@ -60,7 +60,7 @@ export class InvestorsController {
     ) {
         return this.investorsService.getInvestors(req.user.id, Number(page), {
             limit: limit ? Number(limit) : undefined,
-            id: id ? Number(id) : undefined,
+            search,
             userName,
             phone,
             minAmount: minAmount ? Number(minAmount) : undefined,

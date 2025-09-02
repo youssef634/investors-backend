@@ -121,14 +121,13 @@ let UsersService = class UsersService {
         await this.checkAdmin(currentUserId);
         const limit = searchFilters?.limit && searchFilters.limit > 0 ? searchFilters.limit : 10;
         const filters = {};
-        if (searchFilters?.id)
-            filters.id = searchFilters.id;
-        if (searchFilters?.fullName)
-            filters.fullName = { contains: searchFilters.fullName, mode: 'insensitive' };
-        if (searchFilters?.userName)
-            filters.userName = { contains: searchFilters.userName, mode: 'insensitive' };
-        if (searchFilters?.email)
-            filters.email = { contains: searchFilters.email, mode: 'insensitive' };
+        if (searchFilters?.search) {
+            filters.OR = [
+                { fullName: { contains: searchFilters.search, mode: 'insensitive' } },
+                { userName: { contains: searchFilters.search, mode: 'insensitive' } },
+                { email: { contains: searchFilters.search, mode: 'insensitive' } },
+            ];
+        }
         const totalUsers = await this.prisma.user.count({ where: filters });
         const totalPages = Math.ceil(totalUsers / limit);
         if (page > totalPages && totalUsers > 0)

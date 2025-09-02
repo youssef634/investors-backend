@@ -32,17 +32,11 @@ export class UsersController {
     @Param('page') page: number ,
     @Req() req,
     @Query('limit') limit: number,
-    @Query('id') id?: number,
-    @Query('fullName') fullName?: string,
-    @Query('userName') userName?: string,
-    @Query('email') email?: string,
+    @Query('search') search?: string,
   ) {
     return this.usersService.getAllUsers(req.user.id, Number(page),{
       limit: limit ? Number(limit) : undefined,
-      id: id ? Number(id) : undefined,
-      fullName,
-      userName,
-      email,
+      search: search ? search : undefined,
     });
   }
 }
