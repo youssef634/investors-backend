@@ -5,91 +5,118 @@ import { Role } from '@prisma/client';
 
 @Injectable()
 export class TransactionsService {
-  constructor(private prisma: PrismaService) {}
+    constructor(private prisma: PrismaService) { }
 
-  private async checkAdmin(userId: number) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user || user.role !== Role.ADMIN) {
-      throw new ForbiddenException('Only admins can perform this action');
+    private async checkAdmin(userId: number) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user || user.role !== Role.ADMIN) {
+            throw new ForbiddenException('Only admins can perform this action');
+        }
     }
-  }
 
-  async addTransaction(currentUserId: number, dto: CreateTransactionDto) {
-    await this.checkAdmin(currentUserId);
+    async addTransaction(currentUserId: number, dto: CreateTransactionDto) {
+        await this.checkAdmin(currentUserId);
 
-    const user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
-    if (!user) throw new BadRequestException('User does not exist');
+        // Check if user exists
+        const user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
+        if (!user) throw new BadRequestException('User does not exist');
 
-    //const settings = await this.prisma.settings.findFirst();
-    //if (!settings) throw new BadRequestException('Settings not found');
+        // Check if user is an investor
+        const investor = await this.prisma.investors.findUnique({ where: { userId: dto.userId } });
+        if (!investor) throw new BadRequestException('User is not an investor');
 
-    const transaction = await this.prisma.transaction.create({
-      data: {
-        userId: dto.userId,
-        type: dto.type,
-        amount: dto.amount,
-        currency: "IQD",
-        date: new Date(),
-      },
-    });
+        //const settings = await this.prisma.settings.findFirst();
+        //if (!settings) throw new BadRequestException('Settings not found');
 
-    return transaction;
-  }
+        // Start transaction to ensure atomicity
+        const result = await this.prisma.$transaction(async (prisma) => {
+            // Update investor amount based on transaction type
+            let updatedAmount = investor.amount;
+            if (dto.type === 'deposit') {
+                updatedAmount += dto.amount;
+            } else if (dto.type === 'withdrawal') {
+                if (dto.amount > investor.amount) {
+                    throw new BadRequestException('Withdrawal amount exceeds investor balance');
+                }
+                updatedAmount -= dto.amount;
+            }
 
-  async deleteTransaction(currentUserId: number, id: number) {
-    await this.checkAdmin(currentUserId);
+            await prisma.investors.update({
+                where: { userId: dto.userId },
+                data: { amount: updatedAmount },
+            });
 
-    const transaction = await this.prisma.transaction.findUnique({ where: { id } });
-    if (!transaction) throw new NotFoundException('Transaction not found');
+            // Create the transaction
+            const transaction = await prisma.transaction.create({
+                data: {
+                    userId: dto.userId,
+                    type: dto.type,
+                    amount: dto.amount,
+                    currency: 'IQD',
+                    date: new Date(),
+                },
+            });
 
-    return this.prisma.transaction.delete({ where: { id } });
-  }
+            return transaction;
+        });
 
-  async getTransactions(
-    currentUserId: number,
-    page: number = 1,
-    query?: GetTransactionsDto
-  ) {
-    const user = await this.prisma.user.findUnique({ where: { id: currentUserId } });
-    if (!user) throw new ForbiddenException('User not found');
+        return result;
+    }
 
-    const limit = query?.limit && query.limit > 0 ? query.limit : 10;
-    const filters: any = {};
+    async deleteTransaction(currentUserId: number, id: number) {
+        await this.checkAdmin(currentUserId);
 
-    if (query?.type) filters.type = query.type;
-    if (query?.minAmount || query?.maxAmount)
-      filters.amount = {
-        gte: query?.minAmount ?? undefined,
-        lte: query?.maxAmount ?? undefined,
-      };
-    if (query?.startDate || query?.endDate)
-      filters.date = {
-        gte: query?.startDate ? new Date(query.startDate) : undefined,
-        lte: query?.endDate ? new Date(query.endDate) : undefined,
-      };
+        const transaction = await this.prisma.transaction.findUnique({ where: { id } });
+        if (!transaction) throw new NotFoundException('Transaction not found');
 
-    // Users can see only their own transactions
-    if (user.role !== Role.ADMIN) filters.userId = currentUserId;
+        return this.prisma.transaction.delete({ where: { id } });
+    }
 
-    const totalTransactions = await this.prisma.transaction.count({ where: filters });
-    const totalPages = Math.ceil(totalTransactions / limit);
-    if (page > totalPages && totalTransactions > 0) throw new NotFoundException('Page not found');
+    async getTransactions(
+        currentUserId: number,
+        page: number = 1,
+        query?: GetTransactionsDto
+    ) {
+        const user = await this.prisma.user.findUnique({ where: { id: currentUserId } });
+        if (!user) throw new ForbiddenException('User not found');
 
-    const skip = (page - 1) * limit;
+        const limit = query?.limit && query.limit > 0 ? query.limit : 10;
+        const filters: any = {};
 
-    const transactions = await this.prisma.transaction.findMany({
-      where: filters,
-      skip,
-      take: limit,
-      orderBy: { date: 'desc' },
-      include: { user: { select: { fullName: true, phone: true } } },
-    });
+        if (query?.type) filters.type = query.type;
+        if (query?.minAmount || query?.maxAmount)
+            filters.amount = {
+                gte: query?.minAmount ?? undefined,
+                lte: query?.maxAmount ?? undefined,
+            };
+        if (query?.startDate || query?.endDate)
+            filters.date = {
+                gte: query?.startDate ? new Date(query.startDate) : undefined,
+                lte: query?.endDate ? new Date(query.endDate) : undefined,
+            };
 
-    return {
-      totalTransactions,
-      totalPages,
-      currentPage: page,
-      transactions,
-    };
-  }
+        // Users can see only their own transactions
+        if (user.role !== Role.ADMIN) filters.userId = currentUserId;
+
+        const totalTransactions = await this.prisma.transaction.count({ where: filters });
+        const totalPages = Math.ceil(totalTransactions / limit);
+        if (page > totalPages && totalTransactions > 0) throw new NotFoundException('Page not found');
+
+        const skip = (page - 1) * limit;
+
+        const transactions = await this.prisma.transaction.findMany({
+            where: filters,
+            skip,
+            take: limit,
+            orderBy: { date: 'desc' },
+            include: { user: { select: { fullName: true, phone: true } } },
+        });
+
+        return {
+            totalTransactions,
+            totalPages,
+            currentPage: page,
+            transactions,
+        };
+    }
 }
