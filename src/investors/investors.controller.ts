@@ -48,7 +48,7 @@ export class InvestorsController {
         @Req() req,
         @Param('page') page: number,
         @Query('limit') limit?: number,
-        @Query('search') search?: string,
+        @Query('search') search?: any,
         @Query('userName') userName?: string,
         @Query('phone') phone?: string,
         @Query('minAmount') minAmount?: number,

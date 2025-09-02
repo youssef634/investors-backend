@@ -73,7 +73,7 @@ export class InvestorsService {
         page: number = 1,
         searchFilters?: {
             limit?: number;
-            search?: string;
+            search?: any;
             phone?: string; 
             userName?: string;
             minAmount?: number;
