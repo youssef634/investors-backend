@@ -25,6 +25,7 @@ model User {
 
   investors investors[]
   transactions  Transaction[] 
+  Settings  Settings[]
 }
 
 model investors {
@@ -45,6 +46,15 @@ model Transaction {
   date      DateTime @default(now())
 
   user      User     @relation(fields: [userId], references: [id])
+}
+
+model Settings {
+  id              Int     @id @default(autoincrement())
+  userId          Int     @unique
+  defaultCurrency String  @default("IQD")
+  USDtoIQD        Float  
+
+  user           User    @relation(fields: [userId], references: [id])
 }
 
 enum Role {
