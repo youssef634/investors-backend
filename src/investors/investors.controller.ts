@@ -1,41 +1,28 @@
-import {
-    Body,
-    Controller,
-    Delete,
-    Get,
-    Param,
-    ParseIntPipe,
-    Post,
-    Put,
-    Query,
-    Req,
-    UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { InvestorsService } from './investors.service';
 import { AuthGuard } from '@nestjs/passport';
 
 @Controller('investors')
 @UseGuards(AuthGuard('jwt'))
 export class InvestorsController {
-    constructor(private readonly investorsService: InvestorsService) { }
+    constructor(private readonly investorsService: InvestorsService) {}
 
-    @Post()
+    @Post(':id')
     async addInvestor(
         @Req() req,
-        @Body()
-        body: { userName: string; phone: string; amount: number; },
+        @Param('id', ParseIntPipe) id: number,
+        @Body('amount') amount: number,
     ) {
-        return this.investorsService.addInvestor(req.user.id, body);
+        return this.investorsService.addInvestor(req.user.id, id, amount);
     }
 
     @Put(':id')
     async updateInvestor(
         @Req() req,
         @Param('id', ParseIntPipe) id: number,
-        @Body()
-        body: Partial<{ phone: string; amount: number; createdAt: Date }>,
+        @Body('amount') amount: number,
     ) {
-        return this.investorsService.updateInvestor(req.user.id, id, body);
+        return this.investorsService.updateInvestor(req.user.id, id, amount);
     }
 
     @Delete(':id')
@@ -46,11 +33,10 @@ export class InvestorsController {
     @Get(':page')
     async getInvestors(
         @Req() req,
-        @Param('page') page: number,
+        @Param('page', ParseIntPipe) page: number,
         @Query('limit') limit?: number,
+        @Query('userId') userId?: number,
         @Query('search') search?: any,
-        @Query('userName') userName?: string,
-        @Query('phone') phone?: string,
         @Query('minAmount') minAmount?: number,
         @Query('maxAmount') maxAmount?: number,
         @Query('startDate') startDate?: string,
@@ -58,13 +44,12 @@ export class InvestorsController {
         @Query('minShare') minShare?: number,
         @Query('maxShare') maxShare?: number,
     ) {
-        return this.investorsService.getInvestors(req.user.id, Number(page), {
+        return this.investorsService.getInvestors(req.user.id, page, {
             limit: limit ? Number(limit) : undefined,
-            search,
-            userName,
-            phone,
+            userId: userId ? Number(userId) : undefined,
             minAmount: minAmount ? Number(minAmount) : undefined,
             maxAmount: maxAmount ? Number(maxAmount) : undefined,
+            search,
             startDate,
             endDate,
             minShare: minShare ? Number(minShare) : undefined,

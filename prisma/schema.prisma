@@ -17,7 +17,7 @@ datasource db {
 model User {
   id             Int      @id @default(autoincrement())
   fullName       String
-  userName       String   @unique
+  phone          String   @unique
   profileImage   String?
   email          String   @unique
   password       String
@@ -29,12 +29,11 @@ model User {
 
 model investors {
   id        Int      @id @default(autoincrement())
-  userName  String
-  phone     String
+  userId    Int      @unique
   amount    Float
   createdAt DateTime @default(now())
 
-  user   User? @relation(fields: [userName], references: [userName])
+  user      User     @relation(fields: [userId], references: [id])
 }
 
 model Transaction {

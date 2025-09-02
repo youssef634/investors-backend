@@ -29,7 +29,7 @@ export class LoginService {
             user: {
                 id: user.id,
                 fullName: user.fullName,
-                userName: user.userName,
+                phone: user.phone,
                 email: user.email,
                 role: user.role,
             },
@@ -45,7 +45,7 @@ export class LoginService {
         const admin = await this.prisma.user.create({
             data: {
                 fullName: 'System Admin',
-                userName: 'admin',
+                phone: '1234567890',
                 email,
                 password: hashedPassword,
                 role: 'ADMIN',
