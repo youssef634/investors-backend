@@ -89,20 +89,23 @@ export class UsersService {
   async getAllUsers(
     currentUserId: number,
     page: number = 1,
-    searchFilters?: { limit?: number; search?: string },
+    searchFilters?: {
+      limit?: number;
+      id?: number;
+      fullName?: string;
+      email?: string;
+      role?: Role;
+    },
   ) {
     await this.checkAdmin(currentUserId);
 
     const limit = searchFilters?.limit && searchFilters.limit > 0 ? searchFilters.limit : 10;
     const filters: any = {};
 
-    if (searchFilters?.search) {
-      filters.OR = [
-        { fullName: { contains: searchFilters.search, mode: 'insensitive' } },
-        { phone: { contains: searchFilters.search, mode: 'insensitive' } },
-        { email: { contains: searchFilters.search, mode: 'insensitive' } },
-      ];
-    }
+    if (searchFilters?.id) filters.id = searchFilters.id;
+    if (searchFilters?.fullName) filters.fullName = { contains: searchFilters.fullName, mode: 'insensitive' };
+    if (searchFilters?.role) filters.role = searchFilters.role; // Use equals for enum
+    if (searchFilters?.email) filters.email = { contains: searchFilters.email, mode: 'insensitive' };
 
     const totalUsers = await this.prisma.user.count({ where: filters });
     const totalPages = Math.ceil(totalUsers / limit);

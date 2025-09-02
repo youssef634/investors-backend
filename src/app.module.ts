@@ -11,6 +11,7 @@ import { LoginModule } from './auth/login/login.module';
 import { UsersModule } from './users/users.module';
 import { ProfileModule } from './profile/profile.module';
 import { InvestorsModule } from './investors/investors.module';
+import { TransactionsModule } from './transactions/transactions.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { InvestorsModule } from './investors/investors.module';
     UsersModule,
     ProfileModule,
     InvestorsModule,
+    TransactionsModule,
     
   ],
   controllers: [AppController],

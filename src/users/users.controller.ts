@@ -2,11 +2,12 @@ import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query,
 import { UsersService } from './users.service';
 import { CreateUserDto, UpdateUserDto } from './dto/users.dto';
 import { AuthGuard } from '@nestjs/passport';
+import { Role } from '@prisma/client';
 
 @Controller('users')
 @UseGuards(AuthGuard('jwt'))
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly usersService: UsersService) { }
 
   @Post()
   async createUser(@Req() req, @Body() dto: CreateUserDto) {
@@ -28,11 +29,17 @@ export class UsersController {
     @Param('page', ParseIntPipe) page: number,
     @Req() req,
     @Query('limit') limit?: number,
-    @Query('search') search?: string,
+    @Query('id') id?: number,
+    @Query('fullName') fullName?: string,
+    @Query('role') role?: Role,
+    @Query('email') email?: string,
   ) {
     return this.usersService.getAllUsers(req.user.id, page, {
       limit: limit ? Number(limit) : undefined,
-      search,
+      id: id ? Number(id) : undefined,
+      fullName,
+      role, // pass enum directly
+      email,
     });
   }
 }
