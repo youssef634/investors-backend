@@ -114,6 +114,7 @@ export class UsersService {
         { fullName: { contains: searchFilters.search, mode: 'insensitive' } },
         { userName: { contains: searchFilters.search, mode: 'insensitive' } },
         { email: { contains: searchFilters.search, mode: 'insensitive' } },
+        { role: { contains: searchFilters.search, mode: 'insensitive' } },
       ];
     }
     
