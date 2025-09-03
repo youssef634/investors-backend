@@ -13,6 +13,7 @@ import { ProfileModule } from './profile/profile.module';
 import { InvestorsModule } from './investors/investors.module';
 import { TransactionsModule } from './transactions/transactions.module';
 import { SettingsModule } from './settings/settings.module';
+import { FinancialYearModule } from './financial-year/financial-year.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { SettingsModule } from './settings/settings.module';
     InvestorsModule,
     TransactionsModule,
     SettingsModule,
+    FinancialYearModule,
     
   ],
   controllers: [AppController],
