@@ -23,9 +23,15 @@ model User {
   password       String
   role           Role     @default(USER)
 
-  investors investors[]
-  transactions  Transaction[] 
-  Settings  Settings[]
+  investors              investors[]
+  transactions           Transaction[] 
+  Settings               Settings[]
+  profitDistributions    YearlyProfitDistribution[]
+
+  // Opposite sides of FinancialYear relations
+  createdYears           FinancialYear[] @relation("CreatedYears")
+  approvedYears          FinancialYear[] @relation("ApprovedYears")
+  distributedYears       FinancialYear[] @relation("DistributedYears")
 }
 
 model investors {
@@ -34,7 +40,7 @@ model investors {
   amount    Float
   createdAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
 }
 
 model Transaction {
@@ -55,6 +61,112 @@ model Settings {
   USDtoIQD        Float  
 
   user           User    @relation(fields: [userId], references: [id])
+}
+
+  model FinancialYear {
+  id                Int        @id @default(autoincrement())
+  year              Int
+  periodName        String?    @unique
+  periodType        PeriodType @default(custom)
+
+  totalProfit       Float
+  profitPercentage  Float?
+
+  // Profit breakdown
+  totalRevenue        Float?
+  operatingCosts      Float?
+  administrativeCosts Float?
+  taxes               Float?
+  otherExpenses       Float?
+
+  profitSource      ProfitSource @default(manual_calculation)
+  currency          Currency     @default(USD)
+
+  startDate         DateTime
+  endDate           DateTime
+  totalDays         Int?
+  dailyProfitRate   Float?
+
+  status            FinancialYearStatus @default(draft)
+
+  // Rollover settings
+  rolloverEnabled    Boolean       @default(false)
+  rolloverPercentage Float?        @default(100)
+  autoRollover       Boolean       @default(false)
+  autoRolloverDate   DateTime?
+  autoRolloverStatus RolloverStatus @default(pending)
+
+  notes             String?
+
+  createdById       Int
+  approvedById      Int?
+  distributedById   Int?
+
+  createdBy         User          @relation("CreatedYears", fields: [createdById], references: [id])
+  approvedBy        User?         @relation("ApprovedYears", fields: [approvedById], references: [id])
+  distributedBy     User?         @relation("DistributedYears", fields: [distributedById], references: [id])
+
+  approvedAt        DateTime?
+  distributedAt     DateTime?
+
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  // Relations
+  profitDistributions YearlyProfitDistribution[]
+}
+
+model YearlyProfitDistribution {
+  id              Int        @id @default(autoincrement())
+  financialYearId Int
+  userId      Int
+  amount          Float
+  percentage      Float
+  dailyProfit     Float     
+  daysSoFar       Int       
+
+  distributedAt   DateTime?  @default(now())
+
+  financialYear   FinancialYear @relation(fields: [financialYearId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+}
+
+enum PeriodType {
+  annual
+  quarterly
+  monthly
+  project
+  custom
+}
+
+enum ProfitSource {
+  financial_statements
+  accounting_records
+  manual_calculation
+  other
+}
+
+enum Currency {
+  IQD
+  USD
+}
+
+enum FinancialYearStatus {
+  draft
+  active
+  calculated
+  approved
+  distributed
+  closed
+}
+
+enum RolloverStatus {
+  pending
+  completed
+  failed
 }
 
 enum Role {
