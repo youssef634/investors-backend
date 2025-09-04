@@ -112,6 +112,7 @@ export class FinancialYearService {
         totalDailyProfit,
         averageDailyProfit,
         dailyProfitRate: year.dailyProfitRate,
+        daysSoFar: diffDaysInclusive(year.startDate, new Date()),
       },
     };
   }
@@ -372,6 +373,7 @@ export class FinancialYearService {
         dailyProfitRate: year.dailyProfitRate,
         averageDailyProfit,
         totalDays: year.totalDays,
+        daysSoFar: diffDaysInclusive(year.startDate, new Date()),
       },
     };
   }
