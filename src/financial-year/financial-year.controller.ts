@@ -48,8 +48,8 @@ export class FinancialYearController {
 
   /** Get one */
   @Get(':id')
-  async getFinancialYear(@Param('id', ParseIntPipe) id: number) {
-    return this.financialYearService.getFinancialYearById(id);
+  async getFinancialYear(@Req() req, @Param('id', ParseIntPipe) id: number) {
+    return this.financialYearService.getFinancialYearById(id, req.user.id);
   }
 
   /** Distribute (calculate & store per-investor records) */
@@ -84,8 +84,8 @@ export class FinancialYearController {
 
   /** View distributions */
   @Get(':id/distributions')
-  async getDistributions(@Param('id', ParseIntPipe) id: number) {
-    return this.financialYearService.getDistributions(id);
+  async getDistributions(@Req() req, @Param('id', ParseIntPipe) id: number) {
+    return this.financialYearService.getDistributions(id, req.user.id);
   }
 
   /** Delete */
