@@ -122,7 +122,7 @@ export class FinancialYearService {
         totalDailyProfit,
         averageDailyProfit,
         dailyProfitRate: year.dailyProfitRate,
-        daysSoFar: diffDaysInclusive(year.startDate, new Date()),
+        daysSoFar: Math.max(0, diffDaysInclusive(year.startDate, new Date())),
       },
     };
   }
