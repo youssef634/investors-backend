@@ -93,7 +93,20 @@ export class FinancialYearService {
 
     const distributions = await this.prisma.yearlyProfitDistribution.findMany({
       where: { financialYearId: id },
-      include: { user: { select: { id: true, fullName: true, email: true } } },
+      include: { 
+        user: { 
+          select: { 
+            id: true, 
+            fullName: true, 
+            email: true,
+            investors: {
+              select: {
+                createdAt: true
+              }
+            }
+          } 
+        } 
+      },
       orderBy: { amount: 'desc' },
     });
 
@@ -352,7 +365,11 @@ export class FinancialYearService {
     const distributions =
       await this.prisma.yearlyProfitDistribution.findMany({
         where: { financialYearId: yearId },
-        include: { user: { select: { id: true, fullName: true, email: true } } },
+        include: { user: { select: { id: true, fullName: true, email: true,investors: {
+              select: {
+                createdAt: true
+              }
+            } } } },
         orderBy: { percentage: 'desc' },
       });
 
