@@ -23,7 +23,6 @@ function diffDaysInclusive(start: Date, end: Date) {
 export class FinancialYearService {
   constructor(private prisma: PrismaService) { }
 
-  /** Create a new financial year */
   async createFinancialYear(userId: number, data: any) {
     // Basic date validation
     if (!data?.startDate || !data?.endDate) {
@@ -56,7 +55,6 @@ export class FinancialYearService {
     });
   }
 
-  /** Get all financial years (pagination + filters) */
   async getFinancialYears(
     _userId: number,
     page = 1,
@@ -84,7 +82,6 @@ export class FinancialYearService {
     };
   }
 
-  /** Get single year + summary basics */
   async getFinancialYearById(id: number) {
     const year = await this.prisma.financialYear.findUnique({
       where: { id },
@@ -93,19 +90,19 @@ export class FinancialYearService {
 
     const distributions = await this.prisma.yearlyProfitDistribution.findMany({
       where: { financialYearId: id },
-      include: { 
-        user: { 
-          select: { 
-            id: true, 
-            fullName: true, 
+      include: {
+        user: {
+          select: {
+            id: true,
+            fullName: true,
             email: true,
             investors: {
               select: {
                 createdAt: true
               }
             }
-          } 
-        } 
+          }
+        }
       },
       orderBy: { amount: 'desc' },
     });
@@ -130,14 +127,6 @@ export class FinancialYearService {
     };
   }
 
-  /**
-   * DISTRIBUTE (CALCULATE) — Create/refresh distribution records with:
-   *  - amount (investor principal)
-   *  - percentage (share of fund)
-   *  - daysSoFar
-   *  - dailyProfit (amount * dailyRate * daysSoFar)
-   * Sets year.status -> 'calculated'
-   */
   async distributeProfits(adminId: number, role: Role, yearId: number) {
     if (role !== Role.ADMIN) {
       throw new ForbiddenException('Only admin can distribute profits');
@@ -183,11 +172,8 @@ export class FinancialYearService {
 
     // Perform everything in one transaction
     const results = await this.prisma.$transaction(async (tx) => {
-      await tx.yearlyProfitDistribution.deleteMany({
-        where: { financialYearId: yearId },
-      });
+      const upserted: any[] = [];
 
-      const created = [];
       for (const inv of investors) {
         const percentage = (inv.amount / totalAmount) * 100;
 
@@ -203,8 +189,21 @@ export class FinancialYearService {
 
         const dailyProfit = inv.amount * dailyProfitRate * daysSoFar;
 
-        const rec = await tx.yearlyProfitDistribution.create({
-          data: {
+        const rec = await tx.yearlyProfitDistribution.upsert({
+          where: {
+            financialYearId_userId: {
+              financialYearId: yearId,
+              userId: inv.userId,
+            },
+          },
+          update: {
+            amount: inv.amount,
+            percentage,
+            daysSoFar,
+            dailyProfit,
+            updatedAt: new Date(),
+          },
+          create: {
             financialYearId: yearId,
             userId: inv.userId,
             amount: inv.amount,
@@ -213,7 +212,8 @@ export class FinancialYearService {
             dailyProfit,
           },
         });
-        created.push(rec);
+
+        upserted.push(rec);
       }
 
       await tx.financialYear.update({
@@ -226,18 +226,17 @@ export class FinancialYearService {
         },
       });
 
-      return created;
+      return upserted;
     });
 
     const totalInvestors = results.length;
     const totalDailyProfit = results.reduce((s, r) => s + (r.dailyProfit ?? 0), 0);
-
     const averageDailyProfit = totalInvestors > 0 ? totalDailyProfit / totalInvestors : 0;
 
     return {
       financialYearId: yearId,
       status: 'calculated',
-      totalInvestors: results.length,
+      totalInvestors,
       totalDailyProfit,
       averageDailyProfit,
       dailyProfitRate,
@@ -245,11 +244,6 @@ export class FinancialYearService {
     };
   }
 
-
-  /**
-   * APPROVE — Credit each investor’s balance by their calculated dailyProfit and
-   * create a Transaction of type 'profit'; set year.status -> 'approved'
-   */
   async approveYear(adminId: number, role: Role, yearId: number) {
     if (role !== Role.ADMIN) {
       throw new ForbiddenException('Only admin can approve financial years');
@@ -332,7 +326,6 @@ export class FinancialYearService {
     };
   }
 
-  /** CLOSE — Lock the year; no more calculations or approvals */
   async closeYear(adminId: number, role: Role, yearId: number) {
     if (role !== Role.ADMIN) {
       throw new ForbiddenException('Only admin can close financial years');
@@ -355,7 +348,6 @@ export class FinancialYearService {
     });
   }
 
-  /** Get distributions of a year (for Postman viewing) */
   async getDistributions(yearId: number) {
     const year = await this.prisma.financialYear.findUnique({
       where: { id: yearId },
@@ -365,11 +357,17 @@ export class FinancialYearService {
     const distributions =
       await this.prisma.yearlyProfitDistribution.findMany({
         where: { financialYearId: yearId },
-        include: { user: { select: { id: true, fullName: true, email: true,investors: {
-              select: {
-                createdAt: true
+        include: {
+          user: {
+            select: {
+              id: true, fullName: true, email: true, investors: {
+                select: {
+                  createdAt: true
+                }
               }
-            } } } },
+            }
+          }
+        },
         orderBy: { percentage: 'desc' },
       });
 
@@ -392,6 +390,53 @@ export class FinancialYearService {
         totalDays: year.totalDays,
         daysSoFar: diffDaysInclusive(year.startDate, new Date()),
       },
+    };
+  }
+
+  async deleteFinancialYear(adminId: number, role: Role, yearId: number) {
+    if (role !== Role.ADMIN) {
+      throw new ForbiddenException('Only admin can delete financial years');
+    }
+
+    const year = await this.prisma.financialYear.findUnique({
+      where: { id: yearId },
+    });
+    if (!year) throw new NotFoundException('Financial year not found');
+
+    if (year.status !== 'closed') {
+      throw new BadRequestException(
+        "Only 'closed' years can be deleted. close the year first.",
+      );
+    }
+
+    const distributions =
+      await this.prisma.yearlyProfitDistribution.findMany({
+        where: { financialYearId: yearId },
+      });
+
+    // Delete in transaction for consistency
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Delete yearly distributions
+      await tx.yearlyProfitDistribution.deleteMany({
+        where: { financialYearId: yearId },
+      });
+
+      for (const dist of distributions) {
+        // 2. Delete related transactions
+        await tx.transaction.deleteMany({
+          where: { userId: dist.userId, type: 'profit' },
+        });
+      }
+
+      // 3. Finally, delete the financial year
+      await tx.financialYear.delete({
+        where: { id: yearId },
+      });
+    });
+
+    return {
+      message: `Financial year ${yearId} and its related records deleted successfully`,
+      deletedId: yearId,
     };
   }
 }

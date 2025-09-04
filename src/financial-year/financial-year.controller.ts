@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -17,7 +18,7 @@ import { AuthGuard } from '@nestjs/passport';
 @Controller('financial-years')
 @UseGuards(AuthGuard('jwt'))
 export class FinancialYearController {
-  constructor(private financialYearService: FinancialYearService) {}
+  constructor(private financialYearService: FinancialYearService) { }
 
   /** Create */
   @Post()
@@ -43,7 +44,7 @@ export class FinancialYearController {
         status: status || undefined,
       },
     );
-    }
+  }
 
   /** Get one */
   @Get(':id')
@@ -85,5 +86,14 @@ export class FinancialYearController {
   @Get(':id/distributions')
   async getDistributions(@Param('id', ParseIntPipe) id: number) {
     return this.financialYearService.getDistributions(id);
+  }
+
+  /** Delete */
+  @Delete(':id')
+  async deleteFinancialYear(
+    @Req() req,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.financialYearService.deleteFinancialYear(req.user.id, req.user.role, id);
   }
 }

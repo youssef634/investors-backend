@@ -14,10 +14,13 @@ import { InvestorsModule } from './investors/investors.module';
 import { TransactionsModule } from './transactions/transactions.module';
 import { SettingsModule } from './settings/settings.module';
 import { FinancialYearModule } from './financial-year/financial-year.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    
+    ScheduleModule.forRoot(),
 
     PassportModule.register({ defaultStrategy: 'jwt' }),
 
