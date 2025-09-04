@@ -193,7 +193,7 @@ export class FinancialYearService {
 
         const rec = await tx.yearlyProfitDistribution.upsert({
           where: { financialYearId_userId: { financialYearId: yearId, userId: inv.userId } },
-          update: { amount: inv.amount, percentage, daysSoFar, dailyProfit, updatedAt: new Date() },
+          update: { amount: inv.amount, percentage, daysSoFar, dailyProfit,createdAt: inv.createdAt, updatedAt: new Date() },
           create: { financialYearId: yearId, userId: inv.userId, amount: inv.amount, percentage, daysSoFar, dailyProfit },
         });
 
