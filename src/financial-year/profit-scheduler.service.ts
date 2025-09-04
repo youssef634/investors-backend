@@ -50,6 +50,18 @@ export class ProfitSchedulerService {
             await this.fyService.closeYear(1, Role.ADMIN, year.id);
           }
         }
+
+        // ✅ Auto rollover check
+        if (
+          year.autoRollover &&
+          year.autoRolloverDate &&
+          now >= year.autoRolloverDate &&
+          year.autoRolloverStatus === 'pending' &&
+          year.status === 'approved'
+        ) {
+          this.logger.log(`Applying auto rollover for year ${year.id}`);
+          await this.fyService.applyAutoRollover(1, Role.ADMIN, year.id);
+        }
       }
 
       this.logger.log('Hourly profit distribution completed ✅');

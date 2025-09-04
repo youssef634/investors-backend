@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Param,
   ParseIntPipe,
@@ -95,5 +96,33 @@ export class FinancialYearController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.financialYearService.deleteFinancialYear(req.user.id, req.user.role, id);
+  }
+
+  @Patch(':id/rollover')
+  async updateRollover(
+    @Param('id', ParseIntPipe) id: number,
+    @Body()
+    body: {
+      rolloverEnabled?: boolean;
+      rolloverPercentage?: number;
+      autoRollover?: boolean;
+      autoRolloverDate?: string | null;
+    },
+    @Req() req: any,
+  ) {
+    return this.financialYearService.updateRolloverSettings(
+      req.user.id,
+      req.user.role,
+      id,
+      body,
+    );
+  }
+
+  @Post(':id/rollover')
+  async applyRollover(@Param('id') id: number, @Req() req: any) {
+    const adminId = req.user.id;
+    const role = req.user.role as Role;
+
+    return this.financialYearService.applyAutoRollover(adminId, role, Number(id));
   }
 }
