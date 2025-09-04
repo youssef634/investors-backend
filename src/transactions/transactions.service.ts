@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { PrismaService } from '../prisma/prisma.service/prisma.service';
 import { CreateTransactionDto, GetTransactionsDto, TransactionType } from './dto/transactions.dto';
 import { Role } from '@prisma/client';
+import { DateTime } from 'luxon';
 
 @Injectable()
 export class TransactionsService {
@@ -131,11 +132,27 @@ export class TransactionsService {
             include: { user: { select: { fullName: true, phone: true } } },
         });
 
+        // ✅ Timezone formatting
+        let settings = await this.prisma.settings.findUnique({ where: { userId: currentUserId } });
+        if (!settings) {
+            settings = await this.prisma.settings.findUnique({ where: { id: 1 } });
+            if (!settings) throw new NotFoundException('Admin settings not found');
+        }
+        const timezone = settings?.timezone || 'UTC';
+
+        const formattedTransactions = transactions.map(tx => ({
+            ...tx,
+            date: DateTime
+                .fromJSDate(tx.date, { zone: 'utc' })
+                .setZone(timezone)
+                .toFormat('MMM dd, yyyy, hh:mm a'),
+        }));
+
         return {
             totalTransactions,
             totalPages,
             currentPage: page,
-            transactions,
+            transactions: formattedTransactions,
         };
     }
 }

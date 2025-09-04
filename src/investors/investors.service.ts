@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service/prisma.service';
 import { Role } from '@prisma/client';
+import { DateTime } from 'luxon';
 
 @Injectable()
 export class InvestorsService {
@@ -60,15 +61,13 @@ export class InvestorsService {
         await this.checkAdmin(currentUserId);
 
         const limit = searchFilters?.limit && searchFilters.limit > 0 ? searchFilters.limit : 10;
-
         const filters: any = {};
 
         // Search filter
         if (searchFilters?.fullName) {
-            const orFilters: any[] = [
+            filters.OR = [
                 { user: { fullName: { contains: searchFilters.fullName, mode: 'insensitive' } } },
             ];
-            filters.OR = orFilters;
         }
 
         // Specific user filter
@@ -122,12 +121,28 @@ export class InvestorsService {
                 return true;
             });
 
+        // ✅ Timezone formatting
+        let settings = await this.prisma.settings.findUnique({ where: { userId: currentUserId } });
+        if (!settings) {
+            settings = await this.prisma.settings.findUnique({ where: { id: 1 } });
+            if (!settings) throw new NotFoundException('Admin settings not found');
+        }
+        const timezone = settings?.timezone || 'UTC';
+
+        const formattedInvestors = investorsWithShares.map(inv => ({
+            ...inv,
+            createdAt: DateTime
+                .fromJSDate(inv.createdAt, { zone: 'utc' })
+                .setZone(timezone)
+                .toFormat('MMM dd, yyyy, hh:mm a'),
+        }));
+
         return {
-            totalInvestors: investorsWithShares.length,
+            totalInvestors: formattedInvestors.length,
             totalPages,
             currentPage: page,
             totalAmount: totalAmountAll,
-            investors: investorsWithShares,
+            investors: formattedInvestors,
         };
     }
 }

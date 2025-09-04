@@ -57,6 +57,7 @@ model Transaction {
 model Settings {
   id              Int     @id @default(autoincrement())
   userId          Int     @unique
+  timezone        String  @default("UTC")
   defaultCurrency String  @default("IQD")
   USDtoIQD        Float  
 

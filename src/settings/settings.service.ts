@@ -24,6 +24,10 @@ export class SettingsService {
             updatedData.USDtoIQD = data.USDtoIQD;
         }
 
+        if (data.timezone) {
+            updatedData.timezone = data.timezone; // ✅ Add timezone
+        }
+
         const settings = await this.prisma.settings.upsert({
             where: { userId },
             update: updatedData,
@@ -31,6 +35,7 @@ export class SettingsService {
                 userId,
                 defaultCurrency: updatedData.defaultCurrency || 'IQD',
                 USDtoIQD: updatedData.USDtoIQD || 0,
+                timezone: updatedData.timezone || 'UTC', // ✅ Default to UTC
             },
         });
 
