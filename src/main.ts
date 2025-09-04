@@ -6,6 +6,8 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import * as bodyParser from 'body-parser';
 import * as path from 'path';
+import 'crypto';
+
 
 async function bootstrap() {
   dotenv.config();
