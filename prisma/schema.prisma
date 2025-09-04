@@ -38,6 +38,7 @@ model investors {
   id        Int      @id @default(autoincrement())
   userId    Int      @unique
   amount    Float
+  profit    Float    @default(0)
   createdAt DateTime @default(now())
 
   user      User      @relation(fields: [userId], references: [id])
@@ -46,7 +47,7 @@ model investors {
 model Transaction {
   id        Int      @id @default(autoincrement())
   userId    Int
-  type      String   // 'deposit', 'withdrawal', 'profit'
+  type      String   
   amount    Float
   currency  String
   date      DateTime @default(now())

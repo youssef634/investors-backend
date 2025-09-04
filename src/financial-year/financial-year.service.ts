@@ -167,16 +167,20 @@ export class FinancialYearService {
 
     const now = new Date();
     if (dateOnly(now) < dateOnly(year.startDate)) {
-      throw new BadRequestException('Financial year has not started yet');
+      return {
+        financialYearId: yearId,
+        status: 'skipped',
+        reason: 'Financial year has not started yet',
+      };
     }
+
     if (year.status === 'approved' || year.status === 'closed') {
       throw new BadRequestException(`Cannot (re)calculate distributions for a year with status '${year.status}'`);
     }
 
     const totalDays = year.totalDays || diffDaysInclusive(year.startDate, year.endDate);
-    const investors = await this.prisma.investors.findMany();
+    const investors = await this.prisma.investors.findMany({ where: { amount: { gt: 0 } } });
     if (!investors.length) throw new BadRequestException('No investors found');
-
     const totalAmount = investors.reduce((s, inv) => s + (inv.amount || 0), 0);
     if (totalAmount <= 0) throw new BadRequestException('Total invested amount must be greater than 0');
 
@@ -193,7 +197,7 @@ export class FinancialYearService {
 
         const rec = await tx.yearlyProfitDistribution.upsert({
           where: { financialYearId_userId: { financialYearId: yearId, userId: inv.userId } },
-          update: { amount: inv.amount, percentage, daysSoFar, dailyProfit,createdAt: inv.createdAt, updatedAt: new Date() },
+          update: { amount: inv.amount, percentage, daysSoFar, dailyProfit, createdAt: inv.createdAt, updatedAt: new Date() },
           create: { financialYearId: yearId, userId: inv.userId, amount: inv.amount, percentage, daysSoFar, dailyProfit },
         });
 

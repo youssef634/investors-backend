@@ -43,20 +43,42 @@ export class TransactionsService {
 
         // Start transaction to ensure atomicity
         const result = await this.prisma.$transaction(async (prisma) => {
-            // Update investor amount based on transaction type
             let updatedAmount = investor.amount;
+            let updatedProfit = investor.profit;
+
             if (dto.type === 'deposit') {
+                // Deposit increases principal
                 updatedAmount += amountInIQD;
-            } else if (dto.type === 'withdrawal') {
+            }
+            else if (dto.type === 'withdrawal') {
+                // Withdraw from principal
                 if (amountInIQD > investor.amount) {
-                    throw new BadRequestException('Withdrawal amount exceeds investor balance');
+                    throw new BadRequestException('Withdrawal exceeds invested balance');
                 }
                 updatedAmount -= amountInIQD;
             }
+            else if (dto.type === 'withdraw_profit') {
+                // Withdraw from profit
+                if (amountInIQD > investor.profit) {
+                    throw new BadRequestException('Withdrawal exceeds profit balance');
+                }
+                updatedProfit -= amountInIQD;
+            }
+            else if (dto.type === 'profit') {
+                // Profit distribution increases profit
+                updatedProfit += amountInIQD;
+            }
+            else if (dto.type === 'rollover_profit') {
+                updatedAmount += amountInIQD;
+            }
+            else {
+                throw new BadRequestException(`Invalid transaction type: ${dto.type}`);
+            }
 
+            // Update investor record
             await prisma.investors.update({
                 where: { userId: dto.userId },
-                data: { amount: updatedAmount },
+                data: { amount: updatedAmount, profit: updatedProfit },
             });
 
             // Create the transaction (store original currency & amount)

@@ -2,9 +2,12 @@ import { IsEnum, IsNotEmpty, IsNumber, IsOptional } from 'class-validator';
 
 export enum TransactionType {
   DEPOSIT = 'deposit',
-  WITHDRAWAL = 'withdrawal',
-  PROFIT = 'profit',
+  WITHDRAWAL = 'withdrawal',           // from principal
+  WITHDRAWAL_PROFIT = 'withdraw_profit', // from profit only
+  PROFIT = 'profit',                   // when approving a year distribution
+  ROLLOVER_PROFIT = 'rollover_profit', // moves profit into principal
 }
+
 
 export class CreateTransactionDto {
   @IsNotEmpty()
