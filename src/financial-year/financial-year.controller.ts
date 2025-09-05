@@ -28,21 +28,25 @@ export class FinancialYearController {
   }
 
   /** List with pagination & filters */
-  @Get()
+  @Get(':page')
   async getFinancialYears(
+    @Param('page', ParseIntPipe) page: number,
     @Req() req,
-    @Query('page') page: number = 1,
-    @Query('limit') limit: number = 10,
+    @Query('limit') limit?: number,
     @Query('year') year?: number,
     @Query('status') status?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
     return this.financialYearService.getFinancialYears(
       req.user.id,
-      Number(page),
-      Number(limit),
+      page,
       {
+        limit: limit ? Number(limit) : undefined,
         year: year ? Number(year) : undefined,
         status: status || undefined,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
       },
     );
   }

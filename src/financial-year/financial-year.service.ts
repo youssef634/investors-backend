@@ -138,20 +138,38 @@ export class FinancialYearService {
   async getFinancialYears(
     userId: number,
     page = 1,
-    limit = 10,
-    filters?: { year?: number; status?: string }
+    filters?: {
+      limit?: number;
+      year?: number;
+      status?: string;
+      startDate?: string;
+      endDate?: string;
+    }
   ) {
+    const limit = filters?.limit && filters.limit > 0 ? filters.limit : 10;
     const skip = (page - 1) * limit;
+
     const where: any = {};
     if (filters?.year) where.year = filters.year;
     if (filters?.status) where.status = filters.status;
+
+    // ✅ filter based on the financial year's own startDate field
+    if (filters?.startDate || filters?.endDate) {
+      where.startDate = {};
+      if (filters.startDate) {
+        where.startDate.gte = new Date(filters.startDate);
+      }
+      if (filters.endDate) {
+        where.startDate.lte = new Date(filters.endDate);
+      }
+    }
 
     const total = await this.prisma.financialYear.count({ where });
     const years = await this.prisma.financialYear.findMany({
       where,
       skip,
       take: limit,
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: 'desc' }, // keep newest first
     });
 
     const formattedYears = await Promise.all(

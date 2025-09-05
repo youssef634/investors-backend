@@ -105,6 +105,7 @@ export class InvestorsService {
         });
 
         const totalAmountAll = (await this.prisma.investors.aggregate({ _sum: { amount: true } }))._sum.amount || 0;
+        const totalProfitAll = (await this.prisma.investors.aggregate({ _sum: { profit: true } }))._sum.profit || 0;
 
         const investorsWithShares = investors
             .map(inv => ({
@@ -143,6 +144,7 @@ export class InvestorsService {
             totalPages,
             currentPage: page,
             totalAmount: totalAmountAll,
+            totalProfit: totalProfitAll,
             investors: formattedInvestors,
         };
     }
