@@ -112,6 +112,7 @@ export class InvestorsService {
                 userId: inv.userId,
                 fullName: inv.user.fullName,
                 amount: inv.amount,
+                profit: inv.profit,
                 createdAt: inv.createdAt,
                 sharePercentage: totalAmountAll > 0 ? (inv.amount / totalAmountAll) * 100 : 0,
             }))
