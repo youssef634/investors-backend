@@ -15,6 +15,7 @@ export class ReportsController {
     @Query('endDate') endDate?: string,
   ) {
     return this.reportsService.getInvestorsReport(
+      req.user.id,
       req.user.role, // pass full user object
       startDate ? new Date(startDate) : undefined,
       endDate ? new Date(endDate) : undefined,
@@ -24,7 +25,7 @@ export class ReportsController {
   /** 2️⃣ Investor individual report */
   @Get('investors/:id')
   async getInvestorById(@Req() req, @Param('id') id: string) {
-    return this.reportsService.getInvestorById(req.user.role, Number(id));
+    return this.reportsService.getInvestorById(req.user.id, req.user.role, Number(id));
   }
 
   /** 3️⃣ Transactions report */
@@ -35,6 +36,7 @@ export class ReportsController {
     @Query('endDate') endDate?: string,
   ) {
     return this.reportsService.getTransactionsReport(
+      req.user.id,
       req.user.role,
       startDate ? new Date(startDate) : undefined,
       endDate ? new Date(endDate) : undefined,
@@ -44,6 +46,6 @@ export class ReportsController {
   /** 4️⃣ Financial year report */
   @Get('financial-years/:periodName')
   async getFinancialYearReport(@Req() req, @Param('periodName') periodName: string) {
-    return this.reportsService.getFinancialYearReport(req.user.role, periodName);
+    return this.reportsService.getFinancialYearReport(req.user.id , req.user.role, periodName);
   }
 }

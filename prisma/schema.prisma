@@ -34,6 +34,7 @@ model investors {
   fullName  String
   email     String   @unique
   amount    Float
+  profit    Float    @default(0)
   createdAt DateTime @default(now())
 
   transactions           Transaction[] 
@@ -76,9 +77,6 @@ model Settings {
   // Rollover settings
   rolloverEnabled    Boolean       @default(false)
   rolloverPercentage Float?        @default(100)
-  autoRollover       Boolean       @default(false)
-  autoRolloverDate   DateTime?
-  autoRolloverStatus RolloverStatus @default(pending)
 
   createdById       Int
   approvedById      Int?
@@ -102,6 +100,7 @@ model YearlyProfitDistribution {
   amount              Float
   percentage          Float
   totalProfit         Float        
+  isRollover      Boolean    @default(false)
   createdAt       DateTime   @default(now())
 
   financialYear   FinancialYear @relation(fields: [financialYearId], references: [id])

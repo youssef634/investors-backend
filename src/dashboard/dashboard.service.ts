@@ -1,10 +1,28 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service/prisma.service';
 import { subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfYear, endOfYear, subWeeks } from 'date-fns';
+import { DateTime } from 'luxon';
 
 @Injectable()
 export class DashboardService {
     constructor(private prisma: PrismaService) { }
+
+    /** Format a date based on user's timezone */
+    private async formatDate(date: Date | null, userId: number): Promise<string | null> {
+        if (!date) return null;
+
+        let settings = await this.prisma.settings.findUnique({ where: { userId } });
+        if (!settings) {
+            settings = await this.prisma.settings.findFirst();
+            if (!settings) throw new NotFoundException('Settings not found');
+        }
+
+        const timezone = settings?.timezone || 'UTC';
+
+        return DateTime.fromJSDate(date, { zone: 'utc' })
+            .setZone(timezone)
+            .toFormat('MMM dd, yyyy, hh:mm a');
+    }
 
     /** 1️⃣ Overview stats */
     async getOverview() {
@@ -34,51 +52,65 @@ export class DashboardService {
                     ? 100
                     : 0;
 
-        // 2️⃣ Total amount (all-time sum of investors.amount)
-        const totalAmountAgg = await this.prisma.investors.aggregate({
+        // 2️⃣ Total amount = (deposits + rollovers) – withdrawals
+        const totalTx = await this.prisma.transaction.groupBy({
+            by: ['type'],
             _sum: { amount: true },
         });
-        const totalAmount = totalAmountAgg._sum.amount || 0;
 
-        // Weekly amounts
-        const thisWeekAmountAgg = await this.prisma.transaction.aggregate({
+        const sumByType = (type: string) =>
+            totalTx.find((t) => t.type === type)?._sum.amount || 0;
+
+        const totalDeposits = sumByType('deposit');
+        const totalRollovers = sumByType('rollover');
+        const totalWithdrawals = sumByType('withdrawal');
+        const totalAmount = totalDeposits + totalRollovers - totalWithdrawals;
+
+        // Weekly amount changes
+        const thisWeekTx = await this.prisma.transaction.groupBy({
+            by: ['type'],
+            where: { date: { gte: startThisWeek, lte: endThisWeek } },
             _sum: { amount: true },
-            where: { date: { gte: startThisWeek, lte: endThisWeek }, type: 'deposit' },
         });
-        const lastWeekAmountAgg = await this.prisma.transaction.aggregate({
+        const lastWeekTx = await this.prisma.transaction.groupBy({
+            by: ['type'],
+            where: { date: { gte: startLastWeek, lte: endLastWeek } },
             _sum: { amount: true },
-            where: { date: { gte: startLastWeek, lte: endLastWeek }, type: 'deposit' },
         });
+
+        const sumWeek = (arr: any[], type: string) =>
+            arr.find((t) => t.type === type)?._sum.amount || 0;
+
+        const thisWeekAmount =
+            sumWeek(thisWeekTx, 'deposit') +
+            sumWeek(thisWeekTx, 'rollover') -
+            sumWeek(thisWeekTx, 'withdrawal');
+        const lastWeekAmount =
+            sumWeek(lastWeekTx, 'deposit') +
+            sumWeek(lastWeekTx, 'rollover') -
+            sumWeek(lastWeekTx, 'withdrawal');
+
         const amountIncrease =
-            (lastWeekAmountAgg._sum.amount || 0) > 0
-                ? ((thisWeekAmountAgg._sum.amount || 0) - (lastWeekAmountAgg._sum.amount || 0)) /
-                (lastWeekAmountAgg._sum.amount || 1) *
-                100
-                : (thisWeekAmountAgg._sum.amount || 0) > 0
+            lastWeekAmount > 0
+                ? ((thisWeekAmount - lastWeekAmount) / lastWeekAmount) * 100
+                : thisWeekAmount > 0
                     ? 100
                     : 0;
 
-        // 3️⃣ Total profit (all-time sum from profit transactions)
-        const totalProfitAgg = await this.prisma.transaction.aggregate({
-            _sum: { amount: true },
-            where: { type: 'profit' },
-        });
-        const totalProfit = totalProfitAgg._sum.amount || 0;
+        // 3️⃣ Total profit = profits – withdraw_profits
+        const totalProfits = sumByType('profit');
+        const totalWithdrawProfits = sumByType('withdraw_profit');
+        const totalProfit = totalProfits - totalWithdrawProfits;
 
-        const thisWeekProfitAgg = await this.prisma.transaction.aggregate({
-            _sum: { amount: true },
-            where: { date: { gte: startThisWeek, lte: endThisWeek }, type: 'profit' },
-        });
-        const lastWeekProfitAgg = await this.prisma.transaction.aggregate({
-            _sum: { amount: true },
-            where: { date: { gte: startLastWeek, lte: endLastWeek }, type: 'profit' },
-        });
+        const thisWeekProfits =
+            sumWeek(thisWeekTx, 'profit') - sumWeek(thisWeekTx, 'withdraw_profit');
+        const lastWeekProfits =
+            sumWeek(lastWeekTx, 'profit') - sumWeek(lastWeekTx, 'withdraw_profit');
+
         const profitIncrease =
-            (lastWeekProfitAgg._sum.amount || 0) > 0
-                ? ((thisWeekProfitAgg._sum.amount || 0) - (lastWeekProfitAgg._sum.amount || 0)) /
-                (lastWeekProfitAgg._sum.amount || 1) *
-                100
-                : (thisWeekProfitAgg._sum.amount || 0) > 0
+            lastWeekProfits > 0
+                ? ((thisWeekProfits - lastWeekProfits) / lastWeekProfits) * 100
+                : thisWeekProfits > 0
                     ? 100
                     : 0;
 
@@ -165,6 +197,7 @@ export class DashboardService {
         let totalDeposits = 0;
         let totalWithdrawals = 0;
         let totalProfits = 0;
+        let totalprofitWithdrawals = 0;
 
         for (const t of transactions) {
             // Convert amount to default currency
@@ -175,23 +208,26 @@ export class DashboardService {
                 convertedAmount = t.amount / USDtoIQD;
             }
 
-            if (t.type === 'deposit') {
+            if (t.type === 'deposit' || t.type === 'rollover') {
                 totalDeposits += convertedAmount;
             } else if (t.type === 'withdrawal') {
                 totalWithdrawals += convertedAmount;
+            } else if (t.type === 'withdraw_profit') {
+                totalprofitWithdrawals += convertedAmount;
             } else if (t.type === 'profit') {
                 totalProfits += convertedAmount;
             }
         }
 
         const totalAmount = totalDeposits - totalWithdrawals;
+        const totalProfit = totalProfits - totalprofitWithdrawals;
 
         return {
             period,
             startDate: start,
             endDate: end,
             totalAmount,
-            totalProfit: totalProfits,
+            totalProfit: totalProfit,
             currency: defaultCurrency,
         };
     }
@@ -206,21 +242,20 @@ export class DashboardService {
 
         // ✅ Default: current week (Saturday → Friday)
         const currentDay = today.getDay(); // 0 = Sunday, 6 = Saturday
-        const diffToSaturday = (currentDay + 7 - 6) % 7; // how many days to go back to reach Saturday
+        const diffToSaturday = (currentDay + 7 - 6) % 7;
 
         const weekStart = new Date(today);
         weekStart.setDate(today.getDate() - diffToSaturday);
         weekStart.setHours(0, 0, 0, 0);
 
         const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekStart.getDate() + 6); // Saturday + 6 = Friday
+        weekEnd.setDate(weekStart.getDate() + 6);
         weekEnd.setHours(23, 59, 59, 999);
 
         // ✅ Parse inputs
         const start = startDate ? new Date(startDate) : weekStart;
         const end = endDate ? new Date(endDate) : weekEnd;
 
-        // fallback if invalid
         if (isNaN(start.getTime())) start.setTime(weekStart.getTime());
         if (isNaN(end.getTime())) end.setTime(weekEnd.getTime());
 
@@ -232,21 +267,26 @@ export class DashboardService {
         }
         const { defaultCurrency, USDtoIQD } = settings;
 
-        // Fetch transactions
+        // Fetch transactions (now including profit + rollover)
         const transactions = await this.prisma.transaction.findMany({
             where: {
                 date: { gte: start, lte: end },
-                type: { in: ['deposit', 'withdrawal'] },
+                type: { in: ['deposit', 'withdrawal', 'profit', 'rollover', 'withdraw_profit'] },
             },
             orderBy: { date: 'asc' },
         });
 
         // Group by day
-        const grouped: Record<string, { deposits: number[]; withdraws: number[] }> = {};
+        const grouped: Record<
+            string,
+            { deposits: number[]; withdraws: number[]; profits: number[]; rollovers: number[]; withdrawProfits: number[] }
+        > = {};
 
         for (const tx of transactions) {
             const day = tx.date.toISOString().split('T')[0];
-            if (!grouped[day]) grouped[day] = { deposits: [], withdraws: [] };
+            if (!grouped[day]) {
+                grouped[day] = { deposits: [], withdraws: [], profits: [], rollovers: [], withdrawProfits: [] };
+            }
 
             let normalizedAmount = tx.amount;
             if (defaultCurrency === 'IQD' && tx.currency === 'USD') {
@@ -256,16 +296,25 @@ export class DashboardService {
             }
 
             if (tx.type === 'deposit') grouped[day].deposits.push(normalizedAmount);
-            else grouped[day].withdraws.push(normalizedAmount);
+            else if (tx.type === 'withdrawal') grouped[day].withdraws.push(normalizedAmount);
+            else if (tx.type === 'profit') grouped[day].profits.push(normalizedAmount);
+            else if (tx.type === 'rollover') grouped[day].rollovers.push(normalizedAmount);
+            else if (tx.type === 'withdraw_profit') grouped[day].withdrawProfits.push(normalizedAmount);
         }
 
-        // Response with averages
-        const dailyAverages = Object.entries(grouped).map(([day, { deposits, withdraws }]) => ({
+        // Response with totals + averages
+        const dailyStats = Object.entries(grouped).map(([day, { deposits, withdraws, profits, rollovers, withdrawProfits }]) => ({
             day,
             averageDeposit: deposits.length ? deposits.reduce((a, b) => a + b, 0) / deposits.length : 0,
             averageWithdraw: withdraws.length ? withdraws.reduce((a, b) => a + b, 0) / withdraws.length : 0,
+            averageProfit: profits.length ? profits.reduce((a, b) => a + b, 0) / profits.length : 0,
+            averageRollover: rollovers.length ? rollovers.reduce((a, b) => a + b, 0) / rollovers.length : 0,
+            averageWithdrawProfit: withdrawProfits.length ? withdrawProfits.reduce((a, b) => a + b, 0) / withdrawProfits.length : 0,
             //totalDeposit: deposits.reduce((a, b) => a + b, 0),
             //totalWithdraw: withdraws.reduce((a, b) => a + b, 0),
+            //totalProfit: profits.reduce((a, b) => a + b, 0),
+            //totalRollover: rollovers.reduce((a, b) => a + b, 0),
+            //totalWithdrawProfit: withdrawProfits.reduce((a, b) => a + b, 0),
             currency: defaultCurrency,
         }));
 
@@ -273,7 +322,7 @@ export class DashboardService {
             startDate: start,
             endDate: end,
             currency: defaultCurrency,
-            days: dailyAverages,
+            days: dailyStats,
         };
     }
 
@@ -293,6 +342,8 @@ export class DashboardService {
                 periodName: true,
                 totalProfit: true,
                 status: true,
+                rolloverEnabled: true,
+                rolloverPercentage: true,
             },
             orderBy: { year: 'desc' },
         });
@@ -305,6 +356,8 @@ export class DashboardService {
                 name: y.periodName || y.year.toString(),
                 totalProfit: y.totalProfit,
                 status: y.status,
+                rolloverEnabled: y.rolloverEnabled,
+                rolloverPercentage: y.rolloverPercentage,
             });
         }
 
@@ -316,7 +369,7 @@ export class DashboardService {
     }
 
     /** 5️⃣ Top 5 investors by amount */
-    async getTopInvestors(limit: number = 5) {
+    async getTopInvestors(userId: number, limit: number = 5) {
         // Total amount for percentage calculation
         const totalAmountAgg = await this.prisma.investors.aggregate({
             _sum: { amount: true },
@@ -336,13 +389,16 @@ export class DashboardService {
             },
         });
 
-        return topInvestors.map(inv => ({
-            investorId: inv.id,
-            fullName: inv.fullName,
-            email: inv.email,
-            amount: inv.amount,
-            joinedAt: inv.createdAt,
-            percentageOfTotal: totalAmount > 0 ? (inv.amount / totalAmount) * 100 : 0,
-        }));
+        // Format dates and add percentage
+        return Promise.all(
+            topInvestors.map(async (inv) => ({
+                investorId: inv.id,
+                fullName: inv.fullName,
+                email: inv.email,
+                amount: inv.amount,
+                joinedAt: await this.formatDate(inv.createdAt, userId),
+                percentageOfTotal: totalAmount > 0 ? (inv.amount / totalAmount) * 100 : 0,
+            }))
+        );
     }
 }

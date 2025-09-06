@@ -6,7 +6,7 @@ import { DateTime } from 'luxon';
 
 @Injectable()
 export class TransactionsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   private async checkAdmin(userId: number) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -18,60 +18,58 @@ export class TransactionsService {
   async addTransaction(currentUserId: number, dto: CreateTransactionDto) {
     await this.checkAdmin(currentUserId);
 
-    // Check if investor exists
     const investor = await this.prisma.investors.findUnique({ where: { id: dto.investorId } });
     if (!investor) throw new BadRequestException('Investor does not exist');
 
-    // Load settings (fallback to first admin settings)
     let settings = await this.prisma.settings.findFirst();
-    if (!settings) {
-      throw new BadRequestException('Settings not found');
-    }
+    if (!settings) throw new BadRequestException('Settings not found');
 
-    // Convert to IQD if needed
-    let amountInIQD = dto.amount;
-    if (settings.defaultCurrency === 'USD') {
-      amountInIQD = dto.amount * settings.USDtoIQD;
-    }
+    const amountInIQD = settings.defaultCurrency === 'USD'
+      ? dto.amount * settings.USDtoIQD
+      : dto.amount;
 
-    // Apply transaction
-    const result = await this.prisma.$transaction(async (prisma) => {
+    return this.prisma.$transaction(async (tx) => {
       let updatedAmount = investor.amount;
+      let updatedProfit = investor.profit;
 
       if (dto.type === TransactionType.DEPOSIT) {
         updatedAmount += amountInIQD;
+
       } else if (dto.type === TransactionType.WITHDRAWAL) {
-        if (amountInIQD > investor.amount) {
-          throw new BadRequestException('Withdrawal exceeds investor balance');
-        }
+        if (amountInIQD > investor.amount) throw new BadRequestException('Withdrawal exceeds balance');
         updatedAmount -= amountInIQD;
+
+      } else if (dto.type === TransactionType.WITHDRAW_PROFIT) {
+        if (amountInIQD > investor.profit) throw new BadRequestException('Withdrawal exceeds profit balance');
+        updatedProfit -= amountInIQD; // ✅ take from profit
+
       } else if (dto.type === TransactionType.PROFIT) {
-        updatedAmount += amountInIQD;
+        updatedProfit += amountInIQD; // ✅ distributions add to profit
+
+      } else if (dto.type === TransactionType.ROLLOVER) {
+        updatedAmount += amountInIQD; // ✅ reinvested into amount
+
       } else {
         throw new BadRequestException(`Invalid transaction type: ${dto.type}`);
       }
 
-      // Update investor
-      await prisma.investors.update({
+      // Update investor balances
+      await tx.investors.update({
         where: { id: dto.investorId },
-        data: { amount: updatedAmount },
+        data: { amount: updatedAmount, profit: updatedProfit },
       });
 
       // Save transaction
-      const transaction = await prisma.transaction.create({
+      return tx.transaction.create({
         data: {
           investorId: dto.investorId,
           type: dto.type,
-          amount: dto.amount, // keep original input
+          amount: dto.amount,
           currency: settings.defaultCurrency,
           date: new Date(),
         },
       });
-
-      return transaction;
     });
-
-    return result;
   }
 
   async deleteTransaction(currentUserId: number, id: number) {
