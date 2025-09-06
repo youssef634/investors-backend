@@ -314,4 +314,35 @@ export class DashboardService {
             financialYears: grouped[year] || [],
         }));
     }
+
+    /** 5️⃣ Top 5 investors by amount */
+    async getTopInvestors(limit: number = 5) {
+        // Total amount for percentage calculation
+        const totalAmountAgg = await this.prisma.investors.aggregate({
+            _sum: { amount: true },
+        });
+        const totalAmount = totalAmountAgg._sum.amount || 0;
+
+        // Top investors
+        const topInvestors = await this.prisma.investors.findMany({
+            take: limit,
+            orderBy: { amount: 'desc' },
+            select: {
+                id: true,
+                fullName: true,
+                email: true,
+                amount: true,
+                createdAt: true,
+            },
+        });
+
+        return topInvestors.map(inv => ({
+            investorId: inv.id,
+            fullName: inv.fullName,
+            email: inv.email,
+            amount: inv.amount,
+            joinedAt: inv.createdAt,
+            percentageOfTotal: totalAmount > 0 ? (inv.amount / totalAmount) * 100 : 0,
+        }));
+    }
 }

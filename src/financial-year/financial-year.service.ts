@@ -167,8 +167,8 @@ export class FinancialYearService {
               investorId: inv.id,
             },
           },
-          update: { amount: inv.amount, percentage, dailyProfit: profitShare, updatedAt: new Date() },
-          create: { financialYearId: yearId, investorId: inv.id, amount: inv.amount, percentage, dailyProfit: profitShare },
+          update: { amount: inv.amount, percentage, dailyProfit: profitShare, distributedAt: new Date() },
+          create: { financialYearId: yearId, investorId: inv.id, amount: inv.amount, percentage, dailyProfit: profitShare , createdAt: inv.createdAt},
         });
 
         upserted.push(rec);
@@ -193,7 +193,7 @@ export class FinancialYearService {
     const distributions = await this.prisma.yearlyProfitDistribution.findMany({
       where: { financialYearId: yearId },
       include: {
-        investors: { select: { id: true, fullName: true, email: true } },
+        investors: { select: { id: true, fullName: true, email: true , createdAt: true} },
       },
       orderBy: { percentage: 'desc' },
     });
@@ -202,7 +202,6 @@ export class FinancialYearService {
       distributions.map(async (d) => ({
         ...d,
         createdAt: await this.formatDate(d.createdAt, userId),
-        updatedAt: await this.formatDate(d.updatedAt, userId),
         distributedAt: await this.formatDate(d.distributedAt, userId),
       }))
     );
@@ -227,7 +226,6 @@ export class FinancialYearService {
         totalDays: year.totalDays,
         daysSoFar: diffDaysInclusive(year.startDate, new Date()),
         createdAt: await this.formatDate(year.createdAt, userId),
-        updatedAt: await this.formatDate(year.updatedAt, userId),
         approvedAt: await this.formatDate(year.approvedAt, userId),
         distributedAt: await this.formatDate(year.distributedAt, userId),
       },
