@@ -416,54 +416,54 @@ export class FinancialYearService {
   }
 
   /** Admin-only: update rollover settings (only until approval) */
-  async updateRolloverSettings(
-    adminId: number,
-    role: Role,
-    yearId: number,
-    payload: { rolloverEnabled?: boolean; rolloverPercentage?: number; autoRollover?: boolean; autoRolloverDate?: string | null }
-  ) {
-    if (role !== Role.ADMIN) throw new ForbiddenException('Only admin can update rollover settings');
+  // async updateRolloverSettings(
+  //   adminId: number,
+  //   role: Role,
+  //   yearId: number,
+  //   payload: { rolloverEnabled?: boolean; rolloverPercentage?: number; autoRollover?: boolean; autoRolloverDate?: string | null }
+  // ) {
+  //   if (role !== Role.ADMIN) throw new ForbiddenException('Only admin can update rollover settings');
 
-    const year = await this.prisma.financialYear.findUnique({ where: { id: yearId } });
-    if (!year) throw new NotFoundException('Financial year not found');
+  //   const year = await this.prisma.financialYear.findUnique({ where: { id: yearId } });
+  //   if (!year) throw new NotFoundException('Financial year not found');
 
-    // Don’t allow changing rollover settings after approval or close
-    if (['approved', 'distributed', 'closed'].includes(year.status)) {
-      throw new BadRequestException('Cannot change rollover after the year is approved/distributed/closed');
-    }
+  //   // Don’t allow changing rollover settings after approval or close
+  //   if (['approved', 'distributed', 'closed'].includes(year.status)) {
+  //     throw new BadRequestException('Cannot change rollover after the year is approved/distributed/closed');
+  //   }
 
-    const updates: any = {};
+  //   const updates: any = {};
 
-    if (payload.rolloverEnabled !== undefined) {
-      updates.rolloverEnabled = Boolean(payload.rolloverEnabled);
-      // if enabling and no percentage stored, keep existing or default to 100
-      if (updates.rolloverEnabled && year.rolloverPercentage == null && payload.rolloverPercentage == null) {
-        updates.rolloverPercentage = 100;
-      }
-    }
+  //   if (payload.rolloverEnabled !== undefined) {
+  //     updates.rolloverEnabled = Boolean(payload.rolloverEnabled);
+  //     // if enabling and no percentage stored, keep existing or default to 100
+  //     if (updates.rolloverEnabled && year.rolloverPercentage == null && payload.rolloverPercentage == null) {
+  //       updates.rolloverPercentage = 100;
+  //     }
+  //   }
 
-    if (payload.rolloverPercentage !== undefined) {
-      const pct = Number(payload.rolloverPercentage);
-      if (pct < 0 || pct > 100) throw new BadRequestException('rolloverPercentage must be between 0 and 100');
-      updates.rolloverPercentage = pct;
-    }
+  //   if (payload.rolloverPercentage !== undefined) {
+  //     const pct = Number(payload.rolloverPercentage);
+  //     if (pct < 0 || pct > 100) throw new BadRequestException('rolloverPercentage must be between 0 and 100');
+  //     updates.rolloverPercentage = pct;
+  //   }
 
-    if (payload.autoRollover !== undefined) {
-      updates.autoRollover = Boolean(payload.autoRollover);
-    }
+  //   if (payload.autoRollover !== undefined) {
+  //     updates.autoRollover = Boolean(payload.autoRollover);
+  //   }
 
-    if (payload.autoRolloverDate !== undefined) {
-      updates.autoRolloverDate = payload.autoRolloverDate ? new Date(payload.autoRolloverDate) : null;
-      updates.autoRolloverStatus = 'pending';
-    }
+  //   if (payload.autoRolloverDate !== undefined) {
+  //     updates.autoRolloverDate = payload.autoRolloverDate ? new Date(payload.autoRolloverDate) : null;
+  //     updates.autoRolloverStatus = 'pending';
+  //   }
 
-    const updated = await this.prisma.financialYear.update({
-      where: { id: yearId },
-      data: updates,
-    });
+  //   const updated = await this.prisma.financialYear.update({
+  //     where: { id: yearId },
+  //     data: updates,
+  //   });
 
-    return updated;
-  }
+  //   return updated;
+  // }
 
   // /** Apply auto rollover after approval */
   // async applyAutoRollover(adminId: number, role: Role, yearId: number) {
