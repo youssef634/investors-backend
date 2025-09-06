@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service/prisma.service';
-import { subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfYear, endOfYear } from 'date-fns';
+import { subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfYear, endOfYear, subWeeks } from 'date-fns';
 
 @Injectable()
 export class DashboardService {
@@ -8,54 +8,113 @@ export class DashboardService {
 
     /** 1️⃣ Overview stats */
     async getOverview() {
+        // Current week (Sat → Fri)
+        const now = new Date();
+        const startThisWeek = startOfWeek(now, { weekStartsOn: 6 });
+        const endThisWeek = endOfWeek(now, { weekStartsOn: 6 });
+
+        // Last week
+        const startLastWeek = startOfWeek(subWeeks(now, 1), { weekStartsOn: 6 });
+        const endLastWeek = endOfWeek(subWeeks(now, 1), { weekStartsOn: 6 });
+
+        // 1️⃣ Total investors (all-time)
         const totalInvestors = await this.prisma.investors.count();
-        const totalAmount = await this.prisma.investors.aggregate({
+
+        // Investors growth by week
+        const thisWeekInvestors = await this.prisma.investors.count({
+            where: { createdAt: { gte: startThisWeek, lte: endThisWeek } },
+        });
+        const lastWeekInvestors = await this.prisma.investors.count({
+            where: { createdAt: { gte: startLastWeek, lte: endLastWeek } },
+        });
+        const investorsIncrease =
+            lastWeekInvestors > 0
+                ? ((thisWeekInvestors - lastWeekInvestors) / lastWeekInvestors) * 100
+                : thisWeekInvestors > 0
+                    ? 100
+                    : 0;
+
+        // 2️⃣ Total amount (all-time sum of investors.amount)
+        const totalAmountAgg = await this.prisma.investors.aggregate({
             _sum: { amount: true },
         });
+        const totalAmount = totalAmountAgg._sum.amount || 0;
 
-        const totalProfit = await this.prisma.investors.aggregate({
-            _sum: { profit: true },
+        // Weekly amounts
+        const thisWeekAmountAgg = await this.prisma.transaction.aggregate({
+            _sum: { amount: true },
+            where: { date: { gte: startThisWeek, lte: endThisWeek }, type: 'deposit' },
         });
+        const lastWeekAmountAgg = await this.prisma.transaction.aggregate({
+            _sum: { amount: true },
+            where: { date: { gte: startLastWeek, lte: endLastWeek }, type: 'deposit' },
+        });
+        const amountIncrease =
+            (lastWeekAmountAgg._sum.amount || 0) > 0
+                ? ((thisWeekAmountAgg._sum.amount || 0) - (lastWeekAmountAgg._sum.amount || 0)) /
+                (lastWeekAmountAgg._sum.amount || 1) *
+                100
+                : (thisWeekAmountAgg._sum.amount || 0) > 0
+                    ? 100
+                    : 0;
 
+        // 3️⃣ Total profit (all-time sum from profit transactions)
+        const totalProfitAgg = await this.prisma.transaction.aggregate({
+            _sum: { amount: true },
+            where: { type: 'profit' },
+        });
+        const totalProfit = totalProfitAgg._sum.amount || 0;
+
+        const thisWeekProfitAgg = await this.prisma.transaction.aggregate({
+            _sum: { amount: true },
+            where: { date: { gte: startThisWeek, lte: endThisWeek }, type: 'profit' },
+        });
+        const lastWeekProfitAgg = await this.prisma.transaction.aggregate({
+            _sum: { amount: true },
+            where: { date: { gte: startLastWeek, lte: endLastWeek }, type: 'profit' },
+        });
+        const profitIncrease =
+            (lastWeekProfitAgg._sum.amount || 0) > 0
+                ? ((thisWeekProfitAgg._sum.amount || 0) - (lastWeekProfitAgg._sum.amount || 0)) /
+                (lastWeekProfitAgg._sum.amount || 1) *
+                100
+                : (thisWeekProfitAgg._sum.amount || 0) > 0
+                    ? 100
+                    : 0;
+
+        // 4️⃣ Transactions count (all-time)
         const totalTransactions = await this.prisma.transaction.count();
 
-        // Current month
-        const now = new Date();
-        const startThisMonth = startOfMonth(now);
-        const endThisMonth = endOfMonth(now);
-
-        const startLastMonth = startOfMonth(subMonths(now, 1));
-        const endLastMonth = endOfMonth(subMonths(now, 1));
-
-        const thisMonth = await this.prisma.transaction.aggregate({
-            _sum: { amount: true },
-            where: { date: { gte: startThisMonth, lte: endThisMonth } },
+        const thisWeekTransactions = await this.prisma.transaction.count({
+            where: { date: { gte: startThisWeek, lte: endThisWeek } },
         });
-
-        const lastMonth = await this.prisma.transaction.aggregate({
-            _sum: { amount: true },
-            where: { date: { gte: startLastMonth, lte: endLastMonth } },
+        const lastWeekTransactions = await this.prisma.transaction.count({
+            where: { date: { gte: startLastWeek, lte: endLastWeek } },
         });
-
-        const increasePercentage =
-            lastMonth._sum.amount && lastMonth._sum.amount > 0
-                ? ((thisMonth._sum.amount || 0) - (lastMonth._sum.amount || 0)) /
-                (lastMonth._sum.amount || 1) *
-                100
-                : 100;
+        const transactionsIncrease =
+            lastWeekTransactions > 0
+                ? ((thisWeekTransactions - lastWeekTransactions) / lastWeekTransactions) * 100
+                : thisWeekTransactions > 0
+                    ? 100
+                    : 0;
 
         return {
             totalInvestors,
-            totalAmount: totalAmount._sum.amount || 0,
-            totalProfit: totalProfit._sum.profit || 0,
+            totalAmount,
+            totalProfit,
             totalTransactions,
-            monthlyIncreasePercentage: increasePercentage,
+            weeklyIncreases: {
+                investors: investorsIncrease,
+                amount: amountIncrease,
+                profit: profitIncrease,
+                transactions: transactionsIncrease,
+            },
         };
     }
 
     /** 2️⃣ Aggregates by period */
     async getAggregates(
-        period: 'week' | 'month' | 'year' = 'week' ,
+        period: 'week' | 'month' | 'year' = 'week',
         userId?: number
     ) {
         const now = new Date();
@@ -118,7 +177,7 @@ export class DashboardService {
 
             if (t.type === 'deposit') {
                 totalDeposits += convertedAmount;
-            } else if (t.type === 'withdrawal' || t.type === 'withdraw_profit') {
+            } else if (t.type === 'withdrawal') {
                 totalWithdrawals += convertedAmount;
             } else if (t.type === 'profit') {
                 totalProfits += convertedAmount;
@@ -177,7 +236,7 @@ export class DashboardService {
         const transactions = await this.prisma.transaction.findMany({
             where: {
                 date: { gte: start, lte: end },
-                type: { in: ['deposit', 'withdraw_profit', 'withdrawal'] },
+                type: { in: ['deposit', 'withdrawal'] },
             },
             orderBy: { date: 'asc' },
         });

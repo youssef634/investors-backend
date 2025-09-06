@@ -38,7 +38,6 @@ export class UsersController {
       limit: limit ? Number(limit) : undefined,
       id: id ? Number(id) : undefined,
       fullName,
-      role, // pass enum directly
       email,
     });
   }

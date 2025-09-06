@@ -8,6 +8,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -25,6 +26,44 @@ export class FinancialYearController {
   @Post()
   async createFinancialYear(@Req() req, @Body() data: any) {
     return this.financialYearService.createFinancialYear(req.user.id, data);
+  }
+
+  /** Update */
+  @Put(':id')
+  async updateFinancialYear(
+    @Req() req,
+    @Param('id', ParseIntPipe) id: number,
+    @Body()
+    body: {
+      year?: number;
+      periodName?: string;
+      totalProfit?: number;
+      startDate?: string;
+      endDate?: string;
+    },
+  ) {
+    return this.financialYearService.updateFinancialYear(
+      req.user.id,
+      req.user.role as Role,
+      id,
+      body,
+    );
+  }
+
+  /** Distribute (calculate) */
+  @Patch(':id/distribute')
+  async distributeProfits(@Req() req, @Param('id', ParseIntPipe) id: number) {
+    return this.financialYearService.distributeProfits(
+      req.user.id,
+      req.user.role as Role,
+      id,
+    );
+  }
+
+  /** View distributions */
+  @Get(':id/distributions')
+  async getDistributions(@Req() req, @Param('id', ParseIntPipe) id: number) {
+    return this.financialYearService.getDistributions(id, req.user.id);
   }
 
   /** List with pagination & filters */
@@ -57,16 +96,6 @@ export class FinancialYearController {
     return this.financialYearService.getFinancialYearById(id, req.user.id);
   }
 
-  /** Distribute (calculate & store per-investor records) */
-  @Patch(':id/distribute')
-  async distributeProfits(@Req() req, @Param('id', ParseIntPipe) id: number) {
-    return this.financialYearService.distributeProfits(
-      req.user.id,
-      req.user.role as Role,
-      id,
-    );
-  }
-
   /** Approve (credit balances by dailyProfit + create transactions) */
   @Patch(':id/approve')
   async approveYear(@Req() req, @Param('id', ParseIntPipe) id: number) {
@@ -77,6 +106,15 @@ export class FinancialYearController {
     );
   }
 
+  /** Delete */
+  @Delete(':id')
+  async deleteFinancialYear(
+    @Req() req,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.financialYearService.deleteFinancialYear(req.user.id, req.user.role, id);
+  }
+
   /** Close */
   @Patch(':id/close')
   async closeYear(@Req() req, @Param('id', ParseIntPipe) id: number) {
@@ -85,21 +123,6 @@ export class FinancialYearController {
       req.user.role as Role,
       id,
     );
-  }
-
-  /** View distributions */
-  @Get(':id/distributions')
-  async getDistributions(@Req() req, @Param('id', ParseIntPipe) id: number) {
-    return this.financialYearService.getDistributions(id, req.user.id);
-  }
-
-  /** Delete */
-  @Delete(':id')
-  async deleteFinancialYear(
-    @Req() req,
-    @Param('id', ParseIntPipe) id: number,
-  ) {
-    return this.financialYearService.deleteFinancialYear(req.user.id, req.user.role, id);
   }
 
   @Patch(':id/rollover')

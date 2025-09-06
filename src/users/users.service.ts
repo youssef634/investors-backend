@@ -8,7 +8,7 @@ import * as path from 'path';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
   private async checkAdmin(userId: number) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -20,11 +20,10 @@ export class UsersService {
   async createUser(currentUserId: number, dto: CreateUserDto) {
     await this.checkAdmin(currentUserId);
 
-    // Check if email exists
+    // check duplicates
     const existingEmail = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (existingEmail) throw new BadRequestException('Email already exists');
 
-    // Check if phone exists
     const existingPhone = await this.prisma.user.findUnique({ where: { phone: dto.phone } });
     if (existingPhone) throw new BadRequestException('Phone already exists');
 
@@ -36,7 +35,7 @@ export class UsersService {
         phone: dto.phone,
         email: dto.email,
         password: hashedPassword,
-        role: dto.role ?? Role.USER,
+        role: Role.ADMIN,
       },
     });
 
@@ -50,16 +49,13 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
 
-    // Only allow updating fullName, phone, and role
     const updatedData: any = {};
     if (dto.fullName) updatedData.fullName = dto.fullName;
     if (dto.phone) {
-      // check uniqueness
       const existingPhone = await this.prisma.user.findUnique({ where: { phone: dto.phone } });
       if (existingPhone && existingPhone.id !== id) throw new BadRequestException('Phone already exists');
       updatedData.phone = dto.phone;
     }
-    if (dto.role) updatedData.role = dto.role;
 
     const updatedUser = await this.prisma.user.update({ where: { id }, data: updatedData });
     const { password, ...result } = updatedUser;
@@ -72,13 +68,11 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
 
-    // Remove profile image from filesystem
+    // remove profile image if exists
     if (user.profileImage && user.profileImage.startsWith('http://localhost:5000/uploads/profiles/')) {
       const uploadDir = path.join(process.cwd(), 'uploads', 'profiles');
       const oldPath = path.join(uploadDir, path.basename(user.profileImage));
-      if (fs.existsSync(oldPath)) {
-        fs.unlinkSync(oldPath);
-      }
+      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
     }
 
     const deletedUser = await this.prisma.user.delete({ where: { id } });
@@ -86,25 +80,14 @@ export class UsersService {
     return result;
   }
 
-  async getAllUsers(
-    currentUserId: number,
-    page: number = 1,
-    searchFilters?: {
-      limit?: number;
-      id?: number;
-      fullName?: string;
-      email?: string;
-      role?: Role;
-    },
-  ) {
+  async getAllUsers(currentUserId: number, page: number = 1, searchFilters?: { limit?: number; id?: number; fullName?: string; email?: string }) {
     await this.checkAdmin(currentUserId);
 
     const limit = searchFilters?.limit && searchFilters.limit > 0 ? searchFilters.limit : 10;
-    const filters: any = {};
+    const filters: any = { role: Role.ADMIN }; // ✅ only admins
 
     if (searchFilters?.id) filters.id = searchFilters.id;
     if (searchFilters?.fullName) filters.fullName = { contains: searchFilters.fullName, mode: 'insensitive' };
-    if (searchFilters?.role) filters.role = searchFilters.role; // Use equals for enum
     if (searchFilters?.email) filters.email = { contains: searchFilters.email, mode: 'insensitive' };
 
     const totalUsers = await this.prisma.user.count({ where: filters });
@@ -117,13 +100,7 @@ export class UsersService {
       where: filters,
       skip,
       take: limit,
-      select: {
-        id: true,
-        fullName: true,
-        phone: true,
-        email: true,
-        role: true,
-      },
+      select: { id: true, fullName: true, phone: true, email: true},
     });
 
     return { totalUsers, totalPages, currentPage: page, users };

@@ -6,175 +6,143 @@ import { DateTime } from 'luxon';
 
 @Injectable()
 export class TransactionsService {
-    constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
-    private async checkAdmin(userId: number) {
-        const user = await this.prisma.user.findUnique({ where: { id: userId } });
-        if (!user || user.role !== Role.ADMIN) {
-            throw new ForbiddenException('Only admins can perform this action');
-        }
+  private async checkAdmin(userId: number) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.role !== Role.ADMIN) {
+      throw new ForbiddenException('Only admins can perform this action');
+    }
+  }
+
+  async addTransaction(currentUserId: number, dto: CreateTransactionDto) {
+    await this.checkAdmin(currentUserId);
+
+    // Check if investor exists
+    const investor = await this.prisma.investors.findUnique({ where: { id: dto.investorId } });
+    if (!investor) throw new BadRequestException('Investor does not exist');
+
+    // Load settings (fallback to first admin settings)
+    let settings = await this.prisma.settings.findFirst();
+    if (!settings) {
+      throw new BadRequestException('Settings not found');
     }
 
-    async addTransaction(currentUserId: number, dto: CreateTransactionDto) {
-        await this.checkAdmin(currentUserId);
-
-        // Check if user exists
-        const user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
-        if (!user) throw new BadRequestException('User does not exist');
-
-        // Check if user is an investor
-        const investor = await this.prisma.investors.findUnique({ where: { userId: dto.userId } });
-        if (!investor) throw new BadRequestException('User is not an investor');
-
-        // Load settings (user-specific or fallback to first)
-        let settings = await this.prisma.settings.findUnique({ where: { userId: dto.userId } });
-        if (!settings) {
-            settings = await this.prisma.settings.findFirst();
-            if (!settings) {
-                throw new BadRequestException('Settings not found');
-            }
-        }
-
-        // Convert amount to IQD if needed
-        let amountInIQD = dto.amount;
-        if (settings.defaultCurrency === 'USD') {
-            amountInIQD = dto.amount * settings.USDtoIQD;
-        }
-
-        // Start transaction to ensure atomicity
-        const result = await this.prisma.$transaction(async (prisma) => {
-            let updatedAmount = investor.amount;
-            let updatedProfit = investor.profit;
-
-            if (dto.type === 'deposit') {
-                // Deposit increases principal
-                updatedAmount += amountInIQD;
-            }
-            else if (dto.type === 'withdrawal') {
-                // Withdraw from principal
-                if (amountInIQD > investor.amount) {
-                    throw new BadRequestException('Withdrawal exceeds invested balance');
-                }
-                updatedAmount -= amountInIQD;
-            }
-            else if (dto.type === 'withdraw_profit') {
-                // Withdraw from profit
-                if (amountInIQD > investor.profit) {
-                    throw new BadRequestException('Withdrawal exceeds profit balance');
-                }
-                updatedProfit -= amountInIQD;
-            }
-            else if (dto.type === 'profit') {
-                // Profit distribution increases profit
-                updatedProfit += amountInIQD;
-            }
-            else if (dto.type === 'rollover_profit') {
-                updatedAmount += amountInIQD;
-            }
-            else {
-                throw new BadRequestException(`Invalid transaction type: ${dto.type}`);
-            }
-
-            // Update investor record
-            await prisma.investors.update({
-                where: { userId: dto.userId },
-                data: { amount: updatedAmount, profit: updatedProfit },
-            });
-
-            // Create the transaction (store original currency & amount)
-            const transaction = await prisma.transaction.create({
-                data: {
-                    userId: dto.userId,
-                    type: dto.type,
-                    amount: dto.amount, // keep original input
-                    currency: settings.defaultCurrency,
-                    date: new Date(),
-                },
-            });
-
-            return transaction;
-        });
-
-        return result;
+    // Convert to IQD if needed
+    let amountInIQD = dto.amount;
+    if (settings.defaultCurrency === 'USD') {
+      amountInIQD = dto.amount * settings.USDtoIQD;
     }
 
-    async deleteTransaction(currentUserId: number, id: number) {
-        await this.checkAdmin(currentUserId);
+    // Apply transaction
+    const result = await this.prisma.$transaction(async (prisma) => {
+      let updatedAmount = investor.amount;
 
-        const transaction = await this.prisma.transaction.findUnique({ where: { id } });
-        if (!transaction) throw new NotFoundException('Transaction not found');
+      if (dto.type === TransactionType.DEPOSIT) {
+        updatedAmount += amountInIQD;
+      } else if (dto.type === TransactionType.WITHDRAWAL) {
+        if (amountInIQD > investor.amount) {
+          throw new BadRequestException('Withdrawal exceeds investor balance');
+        }
+        updatedAmount -= amountInIQD;
+      } else if (dto.type === TransactionType.PROFIT) {
+        updatedAmount += amountInIQD;
+      } else {
+        throw new BadRequestException(`Invalid transaction type: ${dto.type}`);
+      }
 
-        return this.prisma.transaction.delete({ where: { id } });
+      // Update investor
+      await prisma.investors.update({
+        where: { id: dto.investorId },
+        data: { amount: updatedAmount },
+      });
+
+      // Save transaction
+      const transaction = await prisma.transaction.create({
+        data: {
+          investorId: dto.investorId,
+          type: dto.type,
+          amount: dto.amount, // keep original input
+          currency: settings.defaultCurrency,
+          date: new Date(),
+        },
+      });
+
+      return transaction;
+    });
+
+    return result;
+  }
+
+  async deleteTransaction(currentUserId: number, id: number) {
+    await this.checkAdmin(currentUserId);
+
+    const transaction = await this.prisma.transaction.findUnique({ where: { id } });
+    if (!transaction) throw new NotFoundException('Transaction not found');
+
+    return this.prisma.transaction.delete({ where: { id } });
+  }
+
+  async getTransactions(
+    currentUserId: number,
+    page: number = 1,
+    query?: GetTransactionsDto,
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: currentUserId } });
+    if (!user) throw new ForbiddenException('User not found');
+
+    const limit = query?.limit && query.limit > 0 ? Number(query.limit) : 10;
+    const filters: any = {};
+
+    if (query?.type) filters.type = query.type;
+    if (query?.minAmount || query?.maxAmount)
+      filters.amount = {
+        gte: query?.minAmount ?? undefined,
+        lte: query?.maxAmount ?? undefined,
+      };
+    if (query?.startDate || query?.endDate)
+      filters.date = {
+        gte: query?.startDate ? new Date(query.startDate) : undefined,
+        lte: query?.endDate ? new Date(query.endDate) : undefined,
+      };
+
+    if (query?.investorId) {
+      filters.investorId = Number(query.investorId);
     }
 
-    async getTransactions(
-        currentUserId: number,
-        page: number = 1,
-        query?: GetTransactionsDto
-    ) {
-        const user = await this.prisma.user.findUnique({ where: { id: currentUserId } });
-        if (!user) throw new ForbiddenException('User not found');
+    const totalTransactions = await this.prisma.transaction.count({ where: filters });
+    const totalPages = Math.ceil(totalTransactions / limit);
+    if (page > totalPages && totalTransactions > 0) throw new NotFoundException('Page not found');
 
-        const limit = query?.limit && query.limit > 0 ? Number(query.limit) : 10;
-        const filters: any = {};
+    const skip = (page - 1) * limit;
 
-        if (query?.type) filters.type = query.type;
-        if (query?.minAmount || query?.maxAmount)
-            filters.amount = {
-                gte: query?.minAmount ?? undefined,
-                lte: query?.maxAmount ?? undefined,
-            };
-        if (query?.startDate || query?.endDate)
-            filters.date = {
-                gte: query?.startDate ? new Date(query.startDate) : undefined,
-                lte: query?.endDate ? new Date(query.endDate) : undefined,
-            };
+    const transactions = await this.prisma.transaction.findMany({
+      where: filters,
+      skip,
+      take: Number(limit),
+      orderBy: { date: 'desc' },
+      include: {
+        investors: { select: { fullName: true, email: true } },
+      },
+    });
 
-        // If admin -> allow filtering by userId
-        if (user.role === Role.ADMIN) {
-            if (query?.userId) {
-                filters.userId = Number(query.userId);
-            }
-        } else {
-            // Non-admins can only see their own transactions
-            filters.userId = currentUserId;
-        }
+    // ✅ Timezone formatting
+    let settings = await this.prisma.settings.findFirst();
+    if (!settings) throw new NotFoundException('Admin settings not found');
+    const timezone = settings?.timezone || 'UTC';
 
-        const totalTransactions = await this.prisma.transaction.count({ where: filters });
-        const totalPages = Math.ceil(totalTransactions / limit);
-        if (page > totalPages && totalTransactions > 0) throw new NotFoundException('Page not found');
+    const formattedTransactions = transactions.map((tx) => ({
+      ...tx,
+      date: DateTime.fromJSDate(tx.date, { zone: 'utc' })
+        .setZone(timezone)
+        .toFormat('MMM dd, yyyy, hh:mm a'),
+    }));
 
-        const skip = (page - 1) * limit;
-
-        const transactions = await this.prisma.transaction.findMany({
-            where: filters,
-            skip,
-            take: Number(limit),
-            orderBy: { date: 'desc' },
-            include: { user: { select: { fullName: true, phone: true } } },
-        });
-
-        // ✅ Timezone formatting
-        let settings = await this.prisma.settings.findUnique({ where: { userId: currentUserId } });
-        if (!settings) {
-            settings = await this.prisma.settings.findUnique({ where: { id: 1 } });
-            if (!settings) throw new NotFoundException('Admin settings not found');
-        }
-        const timezone = settings?.timezone || 'UTC';
-
-        const formattedTransactions = transactions.map(tx => ({
-            ...tx,
-            date: DateTime
-                .fromJSDate(tx.date, { zone: 'utc' })
-                .setZone(timezone)
-                .toFormat('MMM dd, yyyy, hh:mm a'),
-        }));
-
-        return {
-            totalTransactions,
-            totalPages,
-            currentPage: page,
-            transactions: formattedTransactions,
-        };
-    }
+    return {
+      totalTransactions,
+      totalPages,
+      currentPage: page,
+      transactions: formattedTransactions,
+    };
+  }
 }

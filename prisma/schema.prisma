@@ -22,13 +22,8 @@ model User {
   email          String   @unique
   password       String
   role           Role     @default(USER)
-
-  investors              investors[]
-  transactions           Transaction[] 
+ 
   Settings               Settings[]
-  profitDistributions    YearlyProfitDistribution[]
-
-  // Opposite sides of FinancialYear relations
   createdYears           FinancialYear[] @relation("CreatedYears")
   approvedYears          FinancialYear[] @relation("ApprovedYears")
   distributedYears       FinancialYear[] @relation("DistributedYears")
@@ -36,23 +31,24 @@ model User {
 
 model investors {
   id        Int      @id @default(autoincrement())
-  userId    Int      @unique
+  fullName  String
+  email     String   @unique
   amount    Float
-  profit    Float    @default(0)
   createdAt DateTime @default(now())
 
-  user      User      @relation(fields: [userId], references: [id])
+  transactions           Transaction[] 
+  profitDistributions    YearlyProfitDistribution[]
 }
 
 model Transaction {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  type      String   
-  amount    Float
-  currency  String
-  date      DateTime @default(now())
+  id            Int      @id @default(autoincrement())
+  investorId    Int
+  type          String   
+  amount        Float
+  currency      String
+  date          DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id])
+  investors      investors     @relation(fields: [investorId], references: [id])
 }
 
 model Settings {
@@ -119,23 +115,22 @@ model Settings {
 }
 
 model YearlyProfitDistribution {
-  id              Int        @id @default(autoincrement())
-  financialYearId Int
-  userId          Int
-  amount          Float
-  percentage      Float
-  dailyProfit     Float     
-  daysSoFar       Int       
+  id                  Int        @id @default(autoincrement())
+  financialYearId     Int
+  investorId          Int
+  amount              Float
+  percentage          Float
+  dailyProfit         Float        
 
   distributedAt   DateTime?  @default(now())
 
   financialYear   FinancialYear @relation(fields: [financialYearId], references: [id])
-  user      User     @relation(fields: [userId], references: [id])
+  investors      investors     @relation(fields: [investorId], references: [id])
 
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
-  @@unique([financialYearId, userId])
+  @@unique([financialYearId, investorId])
 }
 
 enum PeriodType {
