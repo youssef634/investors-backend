@@ -29,7 +29,7 @@ export class UpdateUserDto {
 
   @IsEmail()
   @IsOptional()
-  email: string;
+  email?: string;
 
   @IsString()
   @IsOptional()
