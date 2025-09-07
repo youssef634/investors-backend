@@ -42,7 +42,7 @@ export class DashboardService {
     });
 
     if (!settings) {
-        throw new BadRequestException('User settings not found');
+        await this.prisma.settings.findFirst();
     }
 
     const { defaultCurrency, USDtoIQD } = settings;

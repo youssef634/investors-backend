@@ -91,11 +91,8 @@ export class FinancialYearService {
     role: Role,
     yearId: number,
     updates: {
-      year?: number;
       periodName?: string;
       totalProfit?: number;
-      startDate?: string;
-      endDate?: string;
       rolloverEnabled?: boolean;
       rolloverPercentage?: number;
     },
@@ -112,7 +109,6 @@ export class FinancialYearService {
     const data: any = {};
 
     // ✅ Basic updates
-    if (updates.year !== undefined) data.year = updates.year;
     if (updates.periodName !== undefined) data.periodName = updates.periodName;
     if (updates.totalProfit !== undefined) data.totalProfit = updates.totalProfit;
 
@@ -130,23 +126,6 @@ export class FinancialYearService {
         throw new BadRequestException('Rollover percentage must be between 0 and 100');
       }
       data.rolloverPercentage = updates.rolloverPercentage;
-    }
-
-    // ✅ Dates
-    if (updates.startDate || updates.endDate) {
-      const start = updates.startDate ? new Date(updates.startDate) : year.startDate;
-      const end = updates.endDate ? new Date(updates.endDate) : year.endDate;
-
-      if (end < start) {
-        throw new BadRequestException('endDate must be after startDate');
-      }
-
-      data.startDate = start;
-      data.endDate = end;
-      data.totalDays = Math.max(
-        1,
-        Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1,
-      );
     }
 
     // ✅ Save updates
