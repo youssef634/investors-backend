@@ -8,7 +8,7 @@ import * as path from 'path';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   private async checkAdmin(userId: number) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -56,7 +56,11 @@ export class UsersService {
       if (existingPhone && existingPhone.id !== id) throw new BadRequestException('Phone already exists');
       updatedData.phone = dto.phone;
     }
-
+    if (dto.email) {
+      const existingEmail = await this.prisma.user.findUnique({ where: { email: dto.email } });
+      if (existingEmail && existingEmail.id !== id) throw new BadRequestException('Email already exists');
+      updatedData.email = dto.email;
+    }
     const updatedUser = await this.prisma.user.update({ where: { id }, data: updatedData });
     const { password, ...result } = updatedUser;
     return result;
@@ -100,7 +104,7 @@ export class UsersService {
       where: filters,
       skip,
       take: limit,
-      select: { id: true, fullName: true, phone: true, email: true},
+      select: { id: true, fullName: true, phone: true, email: true },
     });
 
     return { totalUsers, totalPages, currentPage: page, users };

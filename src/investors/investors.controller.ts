@@ -38,7 +38,6 @@ export class InvestorsController {
     @Req() req,
     @Param('id', ParseIntPipe) id: number,
     @Body('fullName') fullName?: string,
-    @Body('email') email?: string,
     @Body('amount') amount?: number,
   ) {
     return this.investorsService.updateInvestor(req.user.id, id, {
