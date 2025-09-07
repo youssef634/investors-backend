@@ -9,8 +9,8 @@ export class DashboardController {
 
     // 1️⃣ Overview stats
     @Get('overview')
-    async getOverview() {
-        return this.dashboardService.getOverview();
+    async getOverview(@Req() req) {
+        return this.dashboardService.getOverview(req.user.id);
     }
 
     // 2️⃣ Aggregated amounts/profits by period
