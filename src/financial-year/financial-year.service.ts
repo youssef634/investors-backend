@@ -498,4 +498,46 @@ export class FinancialYearService {
       deletedId: yearId,
     };
   }
+
+  /** toggle isRollover for a specific investor in a given year */
+  async toggleInvestorRollover(
+    adminId: number,
+    role: Role,
+    yearId: number,
+    investorId: number,
+  ) {
+    if (role !== Role.ADMIN) {
+      throw new ForbiddenException('Only admin can update rollover settings');
+    }
+
+    const year = await this.prisma.financialYear.findUnique({ where: { id: yearId } });
+    if (!year) throw new NotFoundException('Financial year not found');
+
+    const distribution = await this.prisma.yearlyProfitDistribution.findUnique({
+      where: {
+        financialYearId_investorId: { financialYearId: yearId, investorId },
+      },
+    });
+
+    if (!distribution) {
+      throw new NotFoundException('Investor distribution not found for this financial year');
+    }
+
+    if (!year.rolloverEnabled) {
+      throw new BadRequestException('Rollover is not enabled for this financial year');
+    }
+
+    // Toggle the current value
+    const updated = await this.prisma.yearlyProfitDistribution.update({
+      where: {
+        financialYearId_investorId: { financialYearId: yearId, investorId },
+      },
+      data: { isRollover: !distribution.isRollover },
+    });
+
+    return {
+      message: `Rollover toggled for investor ${investorId} in year ${yearId}`,
+      distribution: updated,
+    };
+  }
 }

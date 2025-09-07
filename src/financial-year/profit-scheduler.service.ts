@@ -28,18 +28,6 @@ export class ProfitSchedulerService {
           this.logger.log(`Approving year ${year.id} (end date reached)`);
           await this.fyService.approveYear(1, Role.ADMIN, year.id);
         }
-
-        // ✅ Auto rollover check
-        // if (
-        //   year.autoRollover &&
-        //   year.autoRolloverDate &&
-        //   now >= year.autoRolloverDate &&
-        //   year.autoRolloverStatus === 'pending' &&
-        //   year.status === 'calculated'
-        // ) {
-        //   this.logger.log(`Applying auto rollover for year ${year.id}`);
-        //   await this.fyService.applyAutoRollover(1, Role.ADMIN, year.id);
-        // }
       }
     }
   }

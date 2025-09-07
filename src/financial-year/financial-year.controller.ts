@@ -50,16 +50,6 @@ export class FinancialYearController {
     );
   }
 
-  /** Distribute (calculate) */
-  @Patch(':id/distribute')
-  async distributeProfits(@Req() req, @Param('id', ParseIntPipe) id: number) {
-    return this.financialYearService.distributeProfits(
-      req.user.id,
-      req.user.role as Role,
-      id,
-    );
-  }
-
   /** View distributions */
   @Get(':id/distributions')
   async getDistributions(@Req() req, @Param('id', ParseIntPipe) id: number) {
@@ -113,5 +103,19 @@ export class FinancialYearController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.financialYearService.deleteFinancialYear(req.user.id, req.user.role, id);
+  }
+
+  @Patch('rollover/:yearId/:investorId/toggle')
+  async toggleRollover(
+    @Req() req, // depends on your auth setup
+    @Param('yearId') yearId: number,
+    @Param('investorId') investorId: number,
+  ) {
+    return this.financialYearService.toggleInvestorRollover(
+      req.user.id,
+      req.user.role,
+      Number(yearId),
+      Number(investorId),
+    );
   }
 }

@@ -111,8 +111,8 @@ export class InvestorsService {
             orderBy: { createdAt: 'desc' },
         });
 
-        const totalAmountAll =
-            (await this.prisma.investors.aggregate({ _sum: { amount: true } }))._sum.amount || 0;
+        const totalAmountAll =(await this.prisma.investors.aggregate({ _sum: { amount: true } }))._sum.amount || 0;
+        const totalProfirAll =(await this.prisma.investors.aggregate({ _sum: { profit: true } }))._sum.profit || 0;
 
         // ✅ timezone formatting
         const settings = await this.prisma.settings.findFirst();
@@ -126,6 +126,7 @@ export class InvestorsService {
                 fullName: inv.fullName,
                 email: inv.email,
                 amount: inv.amount,
+                profit: inv.profit,
                 sharePercentage,
                 createdAt: DateTime.fromJSDate(inv.createdAt, { zone: 'utc' })
                     .setZone(timezone)
@@ -149,6 +150,7 @@ export class InvestorsService {
             totalPages,
             currentPage: page,
             totalAmount: totalAmountAll,
+            totalProfit: totalProfirAll,
             investors: formattedInvestors,
         };
     }
