@@ -32,24 +32,27 @@ model User {
 model investors {
   id        Int      @id @default(autoincrement())
   fullName  String
-  email     String   @unique
+  phone     String   @unique       
   amount    Float
-  profit    Float    @default(0)
+  rollover_amount Float @default(0) 
   createdAt DateTime @default(now())
 
-  transactions           Transaction[] 
-  profitDistributions    YearlyProfitDistribution[]
+  transactions        Transaction[] 
+  profitDistributions YearlyProfitDistribution[]
 }
 
 model Transaction {
   id            Int      @id @default(autoincrement())
   investorId    Int
-  type          String   
+  type          TransactionType   
   amount        Float
   currency      String
   date          DateTime @default(now())
+  withdrawSource WithdrawSource? 
+  financialYearId Int?       
 
   investors      investors     @relation(fields: [investorId], references: [id])
+  financialYear  FinancialYear? @relation(fields: [financialYearId], references: [id])
 }
 
 model Settings {
@@ -91,6 +94,7 @@ model Settings {
   createdAt         DateTime   @default(now())
 
   profitDistributions YearlyProfitDistribution[]
+  transactions        Transaction[] 
 }
 
 model YearlyProfitDistribution {
@@ -119,10 +123,15 @@ enum FinancialYearStatus {
   distributed
 }
 
-enum RolloverStatus {
-  pending
-  completed
-  failed
+enum WithdrawSource {
+  AMOUNT
+  ROLLOVER
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  ROLLOVER
 }
 
 enum Role {

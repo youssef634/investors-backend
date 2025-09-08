@@ -45,9 +45,9 @@ export class ReportsService {
             select: {
                 id: true,
                 fullName: true,
-                email: true,
+                phone: true,
                 amount: true,
-                profit: true,
+                rollover_amount: true,
                 createdAt: true,
                 profitDistributions: {
                     select: {
@@ -105,7 +105,7 @@ export class ReportsService {
     }
 
     /** 2️⃣ Investor individual */
-    async getInvestorById(userId: number, role: Role, id: number) {
+    async getInvestorById(userId: number, role: Role, id: number, periodName?: string) {
         if (role !== Role.ADMIN) {
             throw new ForbiddenException('Only admins can access this report');
         }
@@ -115,15 +115,16 @@ export class ReportsService {
             select: {
                 id: true,
                 fullName: true,
-                email: true,
+                phone: true,
                 amount: true,
-                profit: true,
+                rollover_amount: true,
                 createdAt: true,
                 transactions: {
                     select: { id: true, type: true, amount: true, currency: true, date: true },
                     orderBy: { date: 'desc' },
                 },
                 profitDistributions: {
+                    where: periodName ? { financialYear: { periodName } } : undefined,
                     select: {
                         amount: true,
                         percentage: true,
@@ -248,9 +249,9 @@ export class ReportsService {
                             select: {
                                 id: true,
                                 fullName: true,
-                                email: true,
+                                phone: true,
                                 amount: true,
-                                profit: true,
+                                rollover_amount: true,
                                 createdAt: true,
                             },
                         },

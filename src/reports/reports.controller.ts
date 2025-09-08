@@ -5,7 +5,7 @@ import { AuthGuard } from '@nestjs/passport';
 @Controller('reports')
 @UseGuards(AuthGuard('jwt'))
 export class ReportsController {
-  constructor(private readonly reportsService: ReportsService) {}
+  constructor(private readonly reportsService: ReportsService) { }
 
   /** 1️⃣ Investors report */
   @Get('investors')
@@ -22,10 +22,14 @@ export class ReportsController {
     );
   }
 
-  /** 2️⃣ Investor individual report */
-  @Get('investors/:id')
-  async getInvestorById(@Req() req, @Param('id') id: string) {
-    return this.reportsService.getInvestorById(req.user.id, req.user.role, Number(id));
+  /** 2️⃣ Individual investor report */
+  @Get('investors/:id/:periodName')
+  async getInvestorById(
+    @Req() req,
+    @Param('id') id: string,
+    @Param('periodName') periodName: string,
+  ) {
+    return this.reportsService.getInvestorById(req.user.id, req.user.role, Number(id), periodName);
   }
 
   /** 3️⃣ Transactions report */
@@ -46,6 +50,6 @@ export class ReportsController {
   /** 4️⃣ Financial year report */
   @Get('financial-years/:periodName')
   async getFinancialYearReport(@Req() req, @Param('periodName') periodName: string) {
-    return this.reportsService.getFinancialYearReport(req.user.id , req.user.role, periodName);
+    return this.reportsService.getFinancialYearReport(req.user.id, req.user.role, periodName);
   }
 }

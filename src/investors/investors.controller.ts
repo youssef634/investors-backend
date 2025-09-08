@@ -23,13 +23,15 @@ export class InvestorsController {
   async addInvestor(
     @Req() req,
     @Body('fullName') fullName: string,
-    @Body('email') email: string,
+    @Body('phone') phone: string,
+    @Body('createdAt') createdAt: Date,
     @Body('amount') amount: number,
   ) {
     return this.investorsService.addInvestor(req.user.id,
       fullName,
-      email,
+      phone,
       amount,
+      createdAt,
     );
   }
 
@@ -39,10 +41,14 @@ export class InvestorsController {
     @Param('id', ParseIntPipe) id: number,
     @Body('fullName') fullName?: string,
     @Body('amount') amount?: number,
+    @Body('phone') phone?: string,
+    @Body('createdAt') createdAt?: Date,
   ) {
     return this.investorsService.updateInvestor(req.user.id, id, {
       fullName,
       amount,
+      phone,
+      createdAt,
     });
   }
 

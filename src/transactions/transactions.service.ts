@@ -1,7 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service/prisma.service';
-import { CreateTransactionDto, GetTransactionsDto, TransactionType } from './dto/transactions.dto';
-import { Role } from '@prisma/client';
+import { CreateTransactionDto, GetTransactionsDto} from './dto/transactions.dto';
+
+import { Role, TransactionType } from '@prisma/client';
 import { DateTime } from 'luxon';
 
 @Injectable()
@@ -28,44 +29,58 @@ export class TransactionsService {
       ? dto.amount * settings.USDtoIQD
       : dto.amount;
 
+    if (![TransactionType.DEPOSIT, TransactionType.WITHDRAWAL, TransactionType.ROLLOVER].includes(dto.type)) {
+      throw new BadRequestException('Only deposit and withdrawal are allowed');
+    }
+
     return this.prisma.$transaction(async (tx) => {
       let updatedAmount = investor.amount;
-      let updatedProfit = investor.profit;
+      let updatedRollover = investor.rollover_amount;
+      let withdrawSource: 'AMOUNT' | 'ROLLOVER' | null = null;
 
       if (dto.type === TransactionType.DEPOSIT) {
+        // ✅ Just add deposit
         updatedAmount += amountInIQD;
 
       } else if (dto.type === TransactionType.WITHDRAWAL) {
-        if (amountInIQD > investor.amount) throw new BadRequestException('Withdrawal exceeds balance');
-        updatedAmount -= amountInIQD;
+        if (amountInIQD > investor.amount) {
+          throw new BadRequestException('Withdrawal exceeds total balance');
+        }
 
-      } else if (dto.type === TransactionType.WITHDRAW_PROFIT) {
-        if (amountInIQD > investor.profit) throw new BadRequestException('Withdrawal exceeds profit balance');
-        updatedProfit -= amountInIQD; // ✅ take from profit
+        // ✅ Case 1: withdraw fully from rollover
+        if (amountInIQD <= investor.rollover_amount) {
+          updatedRollover -= amountInIQD;
+          updatedAmount -= amountInIQD;
+          withdrawSource = 'ROLLOVER';
 
-      } else if (dto.type === TransactionType.PROFIT) {
-        updatedProfit += amountInIQD; // ✅ distributions add to profit
+          // ✅ Case 2: withdraw more than rollover → take rollover first then from amount
+        } else {
+          const rolloverDeduct = investor.rollover_amount;
+          const amountDeduct = amountInIQD - rolloverDeduct;
 
-      } else if (dto.type === TransactionType.ROLLOVER) {
-        updatedAmount += amountInIQD; // ✅ reinvested into amount
-
-      } else {
-        throw new BadRequestException(`Invalid transaction type: ${dto.type}`);
+          updatedRollover = 0;
+          updatedAmount -= amountInIQD; // remove total from main amount
+          withdrawSource = 'AMOUNT';
+        }
       }
 
-      // Update investor balances
+      // ✅ Update investor balances
       await tx.investors.update({
         where: { id: dto.investorId },
-        data: { amount: updatedAmount, profit: updatedProfit },
+        data: {
+          amount: updatedAmount,
+          rollover_amount: updatedRollover,
+        },
       });
 
-      // Save transaction
+      // ✅ Save transaction
       return tx.transaction.create({
         data: {
           investorId: dto.investorId,
           type: dto.type,
           amount: dto.amount,
           currency: settings.defaultCurrency,
+          withdrawSource,
           date: new Date(),
         },
       });
@@ -103,24 +118,37 @@ export class TransactionsService {
         gte: query?.startDate ? new Date(query.startDate) : undefined,
         lte: query?.endDate ? new Date(query.endDate) : undefined,
       };
-
     if (query?.investorId) {
       filters.investorId = Number(query.investorId);
     }
 
-    const totalTransactions = await this.prisma.transaction.count({ where: filters });
+    // ✅ Join FinancialYear for filtering
+    const yearFilter: any = {};
+    if (query?.year) yearFilter.year = query.year;
+    if (query?.periodName) yearFilter.periodName = query.periodName;
+
+    const totalTransactions = await this.prisma.transaction.count({
+      where: {
+        ...filters,
+        financialYear: Object.keys(yearFilter).length ? yearFilter : undefined,
+      },
+    });
     const totalPages = Math.ceil(totalTransactions / limit);
     if (page > totalPages && totalTransactions > 0) throw new NotFoundException('Page not found');
 
     const skip = (page - 1) * limit;
 
     const transactions = await this.prisma.transaction.findMany({
-      where: filters,
+      where: {
+        ...filters,
+        financialYear: Object.keys(yearFilter).length ? yearFilter : undefined,
+      },
       skip,
       take: Number(limit),
       orderBy: { date: 'desc' },
       include: {
-        investors: { select: { fullName: true, email: true } },
+        investors: { select: { fullName: true, phone: true } },
+        financialYear: { select: { year: true, periodName: true } }, // 👈 include
       },
     });
 

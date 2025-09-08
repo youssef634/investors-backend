@@ -208,7 +208,7 @@ export class FinancialYearService {
     const distributions = await this.prisma.yearlyProfitDistribution.findMany({
       where: { financialYearId: yearId },
       include: {
-        investors: { select: { id: true, fullName: true, email: true, createdAt: true } },
+        investors: { select: { id: true, fullName: true, phone: true, createdAt: true } },
       },
       orderBy: { percentage: 'desc' },
     });
@@ -314,7 +314,7 @@ export class FinancialYearService {
           select: {
             id: true,
             fullName: true,
-            email: true,
+            phone: true,
             createdAt: true
           },
         },
@@ -381,13 +381,13 @@ export class FinancialYearService {
           if (payoutProfit > 0) {
             await tx.investors.update({
               where: { id: dist.investorId },
-              data: { profit: { increment: payoutProfit } },
+              data: { rollover_amount: { increment: payoutProfit } },
             });
 
             await tx.transaction.create({
               data: {
                 investorId: dist.investorId,
-                type: 'profit',
+                type: 'ROLLOVER',
                 amount: payoutProfit,
                 currency,
                 date: new Date(),
@@ -404,7 +404,7 @@ export class FinancialYearService {
             await tx.transaction.create({
               data: {
                 investorId: dist.investorId,
-                type: 'rollover',
+                type: 'ROLLOVER',
                 amount: rolloverProfit,
                 currency,
                 date: new Date(),
@@ -415,13 +415,13 @@ export class FinancialYearService {
           // ❌ No rollover → all goes to profit balance
           await tx.investors.update({
             where: { id: dist.investorId },
-            data: { profit: { increment: totalProfit } },
+            data: { rollover_amount: { increment: totalProfit } },
           });
 
           await tx.transaction.create({
             data: {
               investorId: dist.investorId,
-              type: 'profit',
+              type: 'ROLLOVER',
               amount: totalProfit,
               currency,
               date: new Date(),
@@ -464,7 +464,7 @@ export class FinancialYearService {
         await tx.transaction.deleteMany({
           where: {
             investorId: dist.investorId,
-            type: { in: ['profit'] },
+            type: { in: ['ROLLOVER'] },
           },
         });
       }

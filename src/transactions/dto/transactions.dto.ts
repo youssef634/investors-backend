@@ -1,12 +1,5 @@
 import { IsEnum, IsNotEmpty, IsNumber, IsOptional } from 'class-validator';
-
-export enum TransactionType {
-  DEPOSIT = 'deposit',
-  WITHDRAWAL = 'withdrawal',
-  WITHDRAW_PROFIT = 'withdraw_profit',
-  PROFIT = 'profit',    
-  ROLLOVER = 'rollover', 
-}
+import { TransactionType } from '@prisma/client';
 
 export class CreateTransactionDto {
   @IsNotEmpty()
@@ -18,6 +11,7 @@ export class CreateTransactionDto {
   @IsNumber()
   amount: number;
 }
+
 
 export class GetTransactionsDto {
   @IsOptional()
@@ -33,11 +27,17 @@ export class GetTransactionsDto {
   maxAmount?: number;
 
   @IsOptional()
-  startDate?: string; // ISO string
+  startDate?: string;
 
   @IsOptional()
-  endDate?: string; // ISO string
+  endDate?: string;
 
   @IsOptional()
   limit?: number;
+
+  @IsOptional()
+  year?: number;
+
+  @IsOptional()
+  periodName?: string;
 }

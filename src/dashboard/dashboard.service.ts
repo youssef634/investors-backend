@@ -2,7 +2,6 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service/prisma.service';
 import { subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfYear, endOfYear, subWeeks } from 'date-fns';
 import { DateTime } from 'luxon';
-import { NumericData } from 'qrcode';
 
 @Injectable()
 export class DashboardService {
@@ -78,20 +77,16 @@ export class DashboardService {
         let totalDeposits = 0;
         let totalRollovers = 0;
         let totalWithdrawals = 0;
-        let totalProfits = 0;
-        let totalWithdrawProfits = 0;
 
         for (const t of allTransactions) {
             const amt = convert(t.amount, t.currency);
-            if (t.type === 'deposit') totalDeposits += amt;
-            else if (t.type === 'rollover') totalRollovers += amt;
-            else if (t.type === 'withdrawal') totalWithdrawals += amt;
-            else if (t.type === 'profit') totalProfits += amt;
-            else if (t.type === 'withdraw_profit') totalWithdrawProfits += amt;
+            if (t.type === 'DEPOSIT') totalDeposits += amt;
+            else if (t.type === 'ROLLOVER') totalRollovers += amt;
+            else if (t.type === 'WITHDRAWAL') totalWithdrawals += amt;
         }
 
         const totalAmount = totalDeposits + totalRollovers - totalWithdrawals;
-        const totalProfit = totalProfits - totalWithdrawProfits;
+        const totalRollover = totalRollovers ;
 
         // 3️⃣ Weekly calculations (converted)
         const weekTransactions = (start: Date, end: Date) =>
@@ -100,22 +95,18 @@ export class DashboardService {
         const calcTotals = (transactions: typeof allTransactions) => {
             let deposits = 0,
                 rollovers = 0,
-                withdrawals = 0,
-                profits = 0,
-                withdrawProfits = 0;
+                withdrawals = 0
 
             for (const t of transactions) {
                 const amt = convert(t.amount, t.currency);
-                if (t.type === 'deposit') deposits += amt;
-                else if (t.type === 'rollover') rollovers += amt;
-                else if (t.type === 'withdrawal') withdrawals += amt;
-                else if (t.type === 'profit') profits += amt;
-                else if (t.type === 'withdraw_profit') withdrawProfits += amt;
+                if (t.type === 'DEPOSIT') deposits += amt;
+                else if (t.type === 'ROLLOVER') rollovers += amt;
+                else if (t.type === 'WITHDRAWAL') withdrawals += amt;
             }
 
             return {
                 amount: deposits + rollovers - withdrawals,
-                profit: profits - withdrawProfits,
+                rollover: rollovers,
             };
         };
 
@@ -130,9 +121,9 @@ export class DashboardService {
                     : 0;
 
         const profitIncrease =
-            lastWeekTotals.profit > 0
-                ? ((thisWeekTotals.profit - lastWeekTotals.profit) / lastWeekTotals.profit) * 100
-                : thisWeekTotals.profit > 0
+            lastWeekTotals.rollover > 0
+                ? ((thisWeekTotals.rollover - lastWeekTotals.rollover) / lastWeekTotals.rollover) * 100
+                : thisWeekTotals.rollover > 0
                     ? 100
                     : 0;
 
@@ -151,7 +142,7 @@ export class DashboardService {
         return {
             totalInvestors,
             totalAmount,
-            totalProfit,
+            totalRollover,
             totalTransactions,
             weeklyIncreases: {
                 investors: investorsIncrease,
@@ -215,8 +206,7 @@ export class DashboardService {
 
         let totalDeposits = 0;
         let totalWithdrawals = 0;
-        let totalProfits = 0;
-        let totalprofitWithdrawals = 0;
+        let totalRollover = 0;
 
         for (const t of transactions) {
             // Convert amount to default currency
@@ -227,26 +217,24 @@ export class DashboardService {
                 convertedAmount = t.amount / USDtoIQD;
             }
 
-            if (t.type === 'deposit' || t.type === 'rollover') {
+            if (t.type === 'DEPOSIT') {
                 totalDeposits += convertedAmount;
-            } else if (t.type === 'withdrawal') {
+            } else if (t.type === 'WITHDRAWAL') {
                 totalWithdrawals += convertedAmount;
-            } else if (t.type === 'withdraw_profit') {
-                totalprofitWithdrawals += convertedAmount;
-            } else if (t.type === 'profit') {
-                totalProfits += convertedAmount;
+            } else if (t.type === 'ROLLOVER') {
+                totalRollover += convertedAmount;
             }
         }
 
-        const totalAmount = totalDeposits - totalWithdrawals;
-        const totalProfit = totalProfits - totalprofitWithdrawals;
+        const totalAmount = totalDeposits + totalRollover - totalWithdrawals;
+        const totalRollovers = totalRollover;
 
         return {
             period,
             startDate: start,
             endDate: end,
             totalAmount,
-            totalProfit: totalProfit,
+            totalRollover: totalRollovers,
             currency: defaultCurrency,
         };
     }
@@ -290,7 +278,7 @@ export class DashboardService {
         const transactions = await this.prisma.transaction.findMany({
             where: {
                 date: { gte: start, lte: end },
-                type: { in: ['deposit', 'withdrawal', 'profit', 'rollover', 'withdraw_profit'] },
+                type: { in: ['DEPOSIT', 'WITHDRAWAL', 'ROLLOVER'] },
             },
             orderBy: { date: 'asc' },
         });
@@ -298,13 +286,13 @@ export class DashboardService {
         // Group by day
         const grouped: Record<
             string,
-            { deposits: number[]; withdraws: number[]; profits: number[]; rollovers: number[]; withdrawProfits: number[] }
+            { deposits: number[]; withdraws: number[]; rollovers: number[] }
         > = {};
 
         for (const tx of transactions) {
             const day = tx.date.toISOString().split('T')[0];
             if (!grouped[day]) {
-                grouped[day] = { deposits: [], withdraws: [], profits: [], rollovers: [], withdrawProfits: [] };
+                grouped[day] = { deposits: [], withdraws: [], rollovers: [] };
             }
 
             let normalizedAmount = tx.amount;
@@ -314,26 +302,20 @@ export class DashboardService {
                 normalizedAmount = tx.amount / USDtoIQD;
             }
 
-            if (tx.type === 'deposit') grouped[day].deposits.push(normalizedAmount);
-            else if (tx.type === 'withdrawal') grouped[day].withdraws.push(normalizedAmount);
-            else if (tx.type === 'profit') grouped[day].profits.push(normalizedAmount);
-            else if (tx.type === 'rollover') grouped[day].rollovers.push(normalizedAmount);
-            else if (tx.type === 'withdraw_profit') grouped[day].withdrawProfits.push(normalizedAmount);
+            if (tx.type === 'DEPOSIT') grouped[day].deposits.push(normalizedAmount);
+            else if (tx.type === 'WITHDRAWAL') grouped[day].withdraws.push(normalizedAmount);
+            else if (tx.type === 'ROLLOVER') grouped[day].rollovers.push(normalizedAmount);
         }
 
         // Response with totals + averages
-        const dailyStats = Object.entries(grouped).map(([day, { deposits, withdraws, profits, rollovers, withdrawProfits }]) => ({
+        const dailyStats = Object.entries(grouped).map(([day, { deposits, withdraws, rollovers }]) => ({
             day,
             averageDeposit: deposits.length ? deposits.reduce((a, b) => a + b, 0) / deposits.length : 0,
             averageWithdraw: withdraws.length ? withdraws.reduce((a, b) => a + b, 0) / withdraws.length : 0,
-            averageProfit: profits.length ? profits.reduce((a, b) => a + b, 0) / profits.length : 0,
             averageRollover: rollovers.length ? rollovers.reduce((a, b) => a + b, 0) / rollovers.length : 0,
-            averageWithdrawProfit: withdrawProfits.length ? withdrawProfits.reduce((a, b) => a + b, 0) / withdrawProfits.length : 0,
             //totalDeposit: deposits.reduce((a, b) => a + b, 0),
             //totalWithdraw: withdraws.reduce((a, b) => a + b, 0),
-            //totalProfit: profits.reduce((a, b) => a + b, 0),
             //totalRollover: rollovers.reduce((a, b) => a + b, 0),
-            //totalWithdrawProfit: withdrawProfits.reduce((a, b) => a + b, 0),
             currency: defaultCurrency,
         }));
 
@@ -402,8 +384,9 @@ export class DashboardService {
             select: {
                 id: true,
                 fullName: true,
-                email: true,
+                phone: true,
                 amount: true,
+                rollover_amount: true,
                 createdAt: true,
             },
         });
@@ -413,8 +396,9 @@ export class DashboardService {
             topInvestors.map(async (inv) => ({
                 investorId: inv.id,
                 fullName: inv.fullName,
-                email: inv.email,
+                phone: inv.phone,
                 amount: inv.amount,
+                rolloverAmount: inv.rollover_amount,
                 joinedAt: await this.formatDate(inv.createdAt, userId),
                 percentageOfTotal: totalAmount > 0 ? (inv.amount / totalAmount) * 100 : 0,
             }))

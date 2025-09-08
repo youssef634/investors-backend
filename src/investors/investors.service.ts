@@ -14,18 +14,35 @@ export class InvestorsService {
         }
     }
 
-    async addInvestor(currentUserId: number, fullName: string, email: string, amount: number) {
+    async addInvestor(
+        currentUserId: number,
+        fullName: string,
+        phone: string,
+        amount: number,
+        createdAt?: Date
+    ) {
         await this.checkAdmin(currentUserId);
 
-        const existingInvestor = await this.prisma.investors.findUnique({ where: { email } });
-        if (existingInvestor) throw new BadRequestException('Investor with this email already exists');
+        const existingInvestor = await this.prisma.investors.findUnique({ where: { phone } });
+        if (existingInvestor) {
+            throw new BadRequestException('Investor with this phone already exists');
+        }
 
         return this.prisma.investors.create({
-            data: { fullName, email, amount, createdAt: new Date() },
+            data: {
+                fullName,
+                phone,
+                amount,
+                createdAt: createdAt ?? new Date(),
+            },
         });
     }
 
-    async updateInvestor(currentUserId: number, id: number, dto: { fullName?: string; amount?: number }) {
+    async updateInvestor(
+        currentUserId: number,
+        id: number,
+        dto: { fullName?: string; amount?: number; phone?: string; createdAt?: Date }
+    ) {
         await this.checkAdmin(currentUserId);
 
         const investor = await this.prisma.investors.findUnique({ where: { id } });
@@ -34,6 +51,8 @@ export class InvestorsService {
         const updateData: any = {};
         if (dto.fullName !== undefined) updateData.fullName = dto.fullName;
         if (dto.amount !== undefined) updateData.amount = dto.amount;
+        if (dto.phone !== undefined) updateData.phone = dto.phone;          // ✅ update phone
+        if (dto.createdAt !== undefined) updateData.createdAt = dto.createdAt; // ✅ update createdAt
 
         return this.prisma.investors.update({
             where: { id },
@@ -111,8 +130,8 @@ export class InvestorsService {
             orderBy: { createdAt: 'desc' },
         });
 
-        const totalAmountAll =(await this.prisma.investors.aggregate({ _sum: { amount: true } }))._sum.amount || 0;
-        const totalProfirAll =(await this.prisma.investors.aggregate({ _sum: { profit: true } }))._sum.profit || 0;
+        const totalAmountAll = (await this.prisma.investors.aggregate({ _sum: { amount: true } }))._sum.amount || 0;
+        const totalProfirAll = (await this.prisma.investors.aggregate({ _sum: { rollover_amount: true } }))._sum.rollover_amount || 0;
 
         // ✅ timezone formatting
         const settings = await this.prisma.settings.findFirst();
@@ -124,9 +143,9 @@ export class InvestorsService {
             return {
                 id: inv.id,
                 fullName: inv.fullName,
-                email: inv.email,
+                phone: inv.phone,
                 amount: inv.amount,
-                profit: inv.profit,
+                rollover: inv.rollover_amount,
                 sharePercentage,
                 createdAt: DateTime.fromJSDate(inv.createdAt, { zone: 'utc' })
                     .setZone(timezone)
@@ -150,7 +169,7 @@ export class InvestorsService {
             totalPages,
             currentPage: page,
             totalAmount: totalAmountAll,
-            totalProfit: totalProfirAll,
+            totalRollover: totalProfirAll,
             investors: formattedInvestors,
         };
     }
