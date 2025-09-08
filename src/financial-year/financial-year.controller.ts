@@ -42,11 +42,7 @@ export class FinancialYearController {
     @Param('id', ParseIntPipe) id: number,
     @Body()
     body: {
-      year?: number;
       periodName?: string;
-      totalProfit?: number;
-      startDate?: string;
-      endDate?: string;
     },
   ) {
     return this.financialYearService.updateFinancialYear(

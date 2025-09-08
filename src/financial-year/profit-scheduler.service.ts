@@ -7,32 +7,41 @@ import { Role } from '@prisma/client';
 export class ProfitSchedulerService {
   private readonly logger = new Logger(ProfitSchedulerService.name);
 
-  constructor(private readonly fyService: FinancialYearService) {}
+  constructor(private readonly fyService: FinancialYearService) { }
 
-  /**
-   * Runs every midnight (server time):
-   *  1. Accrues daily profits for all active financial years.
-   *  2. Closes any years that have reached their end date (auto-approve).
-   */
-  // @Cron('* * * * *')
-  // async handleDailyProfitTasks() {
-  //   this.logger.log('Running daily profit scheduler...');
+  // Run every 24 hours at midnight
+  @Cron('0 0 * * *')
+  async handleDailyAccrualAndApproval() {
+    this.logger.log('📅 Running daily accrual & auto-approval...');
 
-  //   // Step 1️⃣: Accrue today's profits for all active years
-  //   const accrualResult = await this.fyService.accrueDailyProfits();
-  //   this.logger.log(`Accrued profits for ${accrualResult.processed} financial years.`);
+    // Find all years still pending
+    const years = await this.fyService['prisma'].financialYear.findMany({
+      where: { status: 'PENDING' },
+    });
 
-  //   // Step 2️⃣: Close and approve financial years whose end date has passed
-  //   const now = new Date();
-  //   const years = await this.fyService['prisma'].financialYear.findMany({
-  //     where: { status: 'PENDING' },
-  //   });
+    for (const year of years) {
+      // Try to accrue one more day
+      const result = await this.fyService.accrueDailyProfits();
 
-  //   for (const year of years) {
-  //     if (now >= year.endDate) {
-  //       this.logger.log(`Approving financial year ${year.id} (end date reached).`);
-  //       await this.fyService.approveYear(1, Role.ADMIN, year.id);
-  //     }
-  //   }
-  // }
+      if (result.processed > 0) {
+        this.logger.log(
+          `✅ Accrued daily profit for year ${year.id} (simulatedDate=${result.simulatedDate})`,
+        );
+      } else if (new Date() > year.endDate) {
+        // Nothing processed and the year is past its end → finalize
+        try {
+          await this.fyService.approveYear(1, Role.ADMIN, year.id);
+          this.logger.log(`🎉 Approved and finalized year ${year.id}`);
+        } catch (err) {
+          this.logger.error(
+            `❌ Failed to approve year ${year.id}}`,
+          );
+        }
+      } else {
+        this.logger.log(
+          `⏭ No accrual today for year ${year.id}, still before end date.`,
+        );
+      }
+    }
+  }
 }

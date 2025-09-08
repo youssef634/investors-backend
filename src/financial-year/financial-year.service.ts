@@ -61,7 +61,7 @@ export class FinancialYearService {
     const totalDays = diffDaysInclusive(start, end);
     const dailyProfit = totalDays > 0 ? Number(data.totalProfit) / totalDays : 0;
 
-    // Create year with status 'calculated' (this is your "pending"/active state per schema)
+    // Always force rollover = 100%
     const year = await this.prisma.financialYear.create({
       data: {
         year: start.getFullYear(),
@@ -71,8 +71,8 @@ export class FinancialYearService {
         endDate: end,
         totalDays,
         dailyProfit,
-        rolloverEnabled: Boolean(data?.rolloverEnabled ?? false),
-        rolloverPercentage: data?.rolloverPercentage ?? (data?.rolloverEnabled ? 100 : 0),
+        rolloverEnabled: true,
+        rolloverPercentage: 100,
         currency: settings.defaultCurrency,
         createdById: userId,
       },
@@ -88,11 +88,6 @@ export class FinancialYearService {
     yearId: number,
     updates: {
       periodName?: string;
-      totalProfit?: number;
-      startDate?: string;
-      endDate?: string;
-      rolloverEnabled?: boolean;
-      rolloverPercentage?: number;
     },
   ) {
     if (role !== Role.ADMIN) throw new ForbiddenException('Only admin can update financial years');
@@ -105,43 +100,8 @@ export class FinancialYearService {
     }
 
     const data: any = {};
-
-    if (updates.periodName !== undefined) data.periodName = updates.periodName;
-    if (updates.totalProfit !== undefined) data.totalProfit = Number(updates.totalProfit);
-
-    // Dates handling: if provided, recompute totalDays and dailyProfit
-    let start = year.startDate;
-    let end = year.endDate;
-    if (updates.startDate) start = new Date(updates.startDate);
-    if (updates.endDate) end = new Date(updates.endDate);
-    if (start && end) {
-      if (end < start) throw new BadRequestException('endDate must be after startDate');
-      data.startDate = start;
-      data.endDate = end;
-      const totalDays = diffDaysInclusive(start, end);
-      data.totalDays = totalDays;
-      // if totalProfit is changing we will set dailyProfit below; otherwise use existing totalProfit
-      const totalProfit = updates.totalProfit !== undefined ? Number(updates.totalProfit) : year.totalProfit;
-      data.dailyProfit = totalDays > 0 ? totalProfit / totalDays : 0;
-    } else if (updates.totalProfit !== undefined && year.totalDays) {
-      data.dailyProfit = year.totalDays > 0 ? Number(updates.totalProfit) / year.totalDays : 0;
-    }
-
-    // Rollover updates
-    if (updates.rolloverEnabled !== undefined) {
-      data.rolloverEnabled = Boolean(updates.rolloverEnabled);
-      if (updates.rolloverEnabled && updates.rolloverPercentage === undefined) {
-        data.rolloverPercentage = year.rolloverPercentage ?? 100;
-      }
-      if (!updates.rolloverEnabled) {
-        data.rolloverPercentage = 0;
-      }
-    }
-    if (updates.rolloverPercentage !== undefined) {
-      const pct = Number(updates.rolloverPercentage);
-      if (pct < 0 || pct > 100) throw new BadRequestException('rolloverPercentage must be between 0 and 100');
-      data.rolloverPercentage = pct;
-      if (pct > 0) data.rolloverEnabled = true;
+    if (updates.periodName !== undefined) {
+      data.periodName = updates.periodName;
     }
 
     const updated = await this.prisma.financialYear.update({
@@ -151,7 +111,7 @@ export class FinancialYearService {
 
     return updated;
   }
-  
+
   async accrueDailyProfits(fakeNow?: Date) {
     const now = fakeNow ?? new Date();
 
@@ -341,8 +301,8 @@ export class FinancialYearService {
       investorId: d.investorId,
       amount: d.amount,
       percentage: d.percentage,
+      dailyProfit: d.dailyProfit,
       totalProfit: d.totalProfit,
-      isRollover: d.isRollover,
       createdAt: await this.formatDate(d.createdAt, userId),
       investor: {
         id: d.investors.id,
@@ -388,8 +348,8 @@ export class FinancialYearService {
       investorId: d.investorId,
       amount: d.amount,
       percentage: d.percentage,
+      dailyProfit: d.dailyProfit,
       totalProfit: d.totalProfit,
-      isRollover: d.isRollover,
       createdAt: await this.formatDate(d.createdAt, userId),
       investor: {
         id: d.investors.id,
