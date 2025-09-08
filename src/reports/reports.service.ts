@@ -120,7 +120,8 @@ export class ReportsService {
                 rollover_amount: true,
                 createdAt: true,
                 transactions: {
-                    select: { id: true, type: true, amount: true, currency: true, date: true },
+                    select: { id: true, type: true, amount: true, currency: true, date: true , withdrawSource: true ,
+                            financialYear: { select: {year:true, periodName: true} } },
                     orderBy: { date: 'desc' },
                 },
                 profitDistributions: {
@@ -128,7 +129,9 @@ export class ReportsService {
                     select: {
                         amount: true,
                         percentage: true,
+                        dailyProfit: true,
                         totalProfit: true,
+                        daysSoFar: true,
                         isRollover: true,
                         financialYear: {
                             select: {
@@ -196,7 +199,10 @@ export class ReportsService {
 
         const transactions = await this.prisma.transaction.findMany({
             where,
-            include: { investors: true },
+            select: { id: true, type: true, amount: true, currency: true, date: true ,withdrawSource: true, 
+                financialYear: { select: {year:true, periodName: true} },
+                investors: {select: { id: true, fullName: true}
+            } },
             orderBy: { date: 'desc' },
         });
 
@@ -206,7 +212,6 @@ export class ReportsService {
                 date: await this.formatDate(tx.date, userId),
                 investors: {
                     ...tx.investors,
-                    createdAt: await this.formatDate(tx.investors.createdAt, userId),
                 },
             }))
         );
@@ -243,7 +248,9 @@ export class ReportsService {
                     select: {
                         amount: true,
                         percentage: true,
+                        dailyProfit:true,
                         totalProfit: true,
+                        daysSoFar:true,
                         isRollover: true,
                         investors: {
                             select: {
