@@ -316,6 +316,7 @@ export class FinancialYearService {
       investorId: d.investorId,
       amount: d.amount,
       percentage: d.percentage,
+      currency: year.currency,
       dailyProfit: d.dailyProfit,
       totalProfit: d.totalProfit,
       daysSoFar: d.daysSoFar,
@@ -336,6 +337,7 @@ export class FinancialYearService {
       distributions: formatted,
       summary: {
         totalInvestors: formatted.length,
+        currency: year.currency,
         totalProfit: distributions.reduce((s, d) => s + (d.totalProfit ?? 0), 0),
         dailyProfit: year.dailyProfit,
         totalDays: year.totalDays,
@@ -365,6 +367,7 @@ export class FinancialYearService {
       investorId: d.investorId,
       amount: d.amount,
       percentage: d.percentage,
+      currency: year.currency,
       dailyProfit: d.dailyProfit,
       totalProfit: d.totalProfit,
       createdAt: await this.formatDate(d.createdAt, userId),
@@ -389,6 +392,7 @@ export class FinancialYearService {
       summary: {
         totalInvestors: formattedDistributions.length,
         totalProfit: distributions.reduce((s, d) => s + (d.totalProfit ?? 0), 0),
+        currency: year.currency,
         dailyProfit: year.dailyProfit,
         daysSoFar: Math.max(0, diffDaysInclusive(year.startDate, new Date())),
       },
