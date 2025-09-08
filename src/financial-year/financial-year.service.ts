@@ -321,6 +321,7 @@ export class FinancialYearService {
       summary: {
         totalInvestors: formatted.length,
         totalProfit: distributions.reduce((s, d) => s + (d.totalProfit ?? 0), 0),
+        dailyProfit: year.dailyProfit,
         totalDays: year.totalDays,
         daysSoFar: Math.max(0, diffDaysInclusive(year.startDate, new Date())),
         createdAt: await this.formatDate(year.createdAt, userId),
