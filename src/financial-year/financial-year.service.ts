@@ -240,9 +240,14 @@ export class FinancialYearService {
     });
 
     if (!distributions.length) {
-      // If no distributions exist, it's possible accrual didn't run; but still proceed gracefully
-      throw new BadRequestException('No distributions found for this financial year. Ensure accrual ran before approval.');
+      throw new BadRequestException(
+        'No distributions found for this financial year. Ensure accrual ran before approval.',
+      );
     }
+
+    // get settings for currency conversion
+    const settings = await this.prisma.settings.findFirst();
+    if (!settings) throw new NotFoundException('Admin settings not found');
 
     const currency = year.currency;
 
@@ -251,25 +256,28 @@ export class FinancialYearService {
         const totalProfit = Number(dist.totalProfit ?? 0);
         if (totalProfit <= 0) continue;
 
+        // amount in IQD (convert if needed)
+        const amountInIQD =
+          currency === 'USD' ? totalProfit * settings.USDtoIQD : totalProfit;
+
         // Create a ROLLOVER transaction linked to this financial year
         await tx.transaction.create({
           data: {
             investorId: dist.investorId,
             type: 'ROLLOVER',
-            amount: totalProfit,
+            amount: totalProfit, // keep original amount in original currency
             currency,
             date: new Date(),
             financialYearId: year.id,
-            // withdrawSource is null for rollovers
           },
         });
 
-        // Move all accumulated profit to investor.rollover_amount (per your "auto 100% rollover" requirement)
+        // Move accumulated profit → investor balances (always in IQD)
         await tx.investors.update({
           where: { id: dist.investorId },
           data: {
-            amount: { increment: totalProfit },
-            rollover_amount: { increment: totalProfit },
+            amount: { increment: amountInIQD },
+            rollover_amount: { increment: amountInIQD },
           },
         });
       }

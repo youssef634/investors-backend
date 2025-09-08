@@ -53,7 +53,9 @@ export class ReportsService {
                     select: {
                         amount: true,
                         percentage: true,
+                        dailyProfit: true,
                         totalProfit: true,
+                        daysSoFar: true,
                         isRollover: true,
                         financialYear: {
                             select: {
@@ -82,25 +84,34 @@ export class ReportsService {
             orderBy: { createdAt: 'desc' },
         });
 
-        // format dates
+        // total of all investors for percentage calculation
+        const totalAmountAll =
+            (await this.prisma.investors.aggregate({ _sum: { amount: true } }))._sum.amount || 0;
+
+        // format dates and add sharePercentage
         return Promise.all(
-            investors.map(async (inv) => ({
-                ...inv,
-                createdAt: await this.formatDate(inv.createdAt, userId),
-                profitDistributions: await Promise.all(
-                    inv.profitDistributions.map(async (pd) => ({
-                        ...pd,
-                        financialYear: {
-                            ...pd.financialYear,
-                            startDate: await this.formatDate(pd.financialYear.startDate, userId),
-                            endDate: await this.formatDate(pd.financialYear.endDate, userId),
-                            approvedAt: await this.formatDate(pd.financialYear.approvedAt, userId),
-                            distributedAt: await this.formatDate(pd.financialYear.distributedAt, userId),
-                            createdAt: await this.formatDate(pd.financialYear.createdAt, userId),
-                        },
-                    }))
-                ),
-            }))
+            investors.map(async (inv) => {
+                const sharePercentage = totalAmountAll > 0 ? (inv.amount / totalAmountAll) * 100 : 0;
+
+                return {
+                    ...inv,
+                    sharePercentage,
+                    createdAt: await this.formatDate(inv.createdAt, userId),
+                    profitDistributions: await Promise.all(
+                        inv.profitDistributions.map(async (pd) => ({
+                            ...pd,
+                            financialYear: {
+                                ...pd.financialYear,
+                                startDate: await this.formatDate(pd.financialYear.startDate, userId),
+                                endDate: await this.formatDate(pd.financialYear.endDate, userId),
+                                approvedAt: await this.formatDate(pd.financialYear.approvedAt, userId),
+                                distributedAt: await this.formatDate(pd.financialYear.distributedAt, userId),
+                                createdAt: await this.formatDate(pd.financialYear.createdAt, userId),
+                            },
+                        }))
+                    ),
+                };
+            })
         );
     }
 
@@ -120,8 +131,15 @@ export class ReportsService {
                 rollover_amount: true,
                 createdAt: true,
                 transactions: {
-                    select: { id: true, type: true, amount: true, currency: true, date: true , withdrawSource: true ,
-                            financialYear: { select: {year:true, periodName: true} } },
+                    select: {
+                        id: true,
+                        type: true,
+                        amount: true,
+                        currency: true,
+                        date: true,
+                        withdrawSource: true,
+                        financialYear: { select: { year: true, periodName: true } },
+                    },
                     orderBy: { date: 'desc' },
                 },
                 profitDistributions: {
@@ -161,8 +179,14 @@ export class ReportsService {
 
         if (!investor) throw new NotFoundException('Investor not found');
 
+        // calculate share percentage against all investors
+        const totalAmountAll =
+            (await this.prisma.investors.aggregate({ _sum: { amount: true } }))._sum.amount || 0;
+        const sharePercentage = totalAmountAll > 0 ? (investor.amount / totalAmountAll) * 100 : 0;
+
         return {
             ...investor,
+            sharePercentage, // ⬅ added here
             createdAt: await this.formatDate(investor.createdAt, userId),
             transactions: await Promise.all(
                 investor.transactions.map(async (tx) => ({
@@ -199,10 +223,13 @@ export class ReportsService {
 
         const transactions = await this.prisma.transaction.findMany({
             where,
-            select: { id: true, type: true, amount: true, currency: true, date: true ,withdrawSource: true, 
-                financialYear: { select: {year:true, periodName: true} },
-                investors: {select: { id: true, fullName: true}
-            } },
+            select: {
+                id: true, type: true, amount: true, currency: true, date: true, withdrawSource: true,
+                financialYear: { select: { year: true, periodName: true } },
+                investors: {
+                    select: { id: true, fullName: true }
+                }
+            },
             orderBy: { date: 'desc' },
         });
 
@@ -248,9 +275,9 @@ export class ReportsService {
                     select: {
                         amount: true,
                         percentage: true,
-                        dailyProfit:true,
+                        dailyProfit: true,
                         totalProfit: true,
-                        daysSoFar:true,
+                        daysSoFar: true,
                         isRollover: true,
                         investors: {
                             select: {
