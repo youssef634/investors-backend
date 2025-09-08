@@ -128,23 +128,23 @@ export class FinancialYearService {
       const dailyProfitPerYear = Number(year.dailyProfit ?? 0);
       if (dailyProfitPerYear <= 0) continue;
 
-      // --- figure out which day we need to process ---
+      // --- figure out which day we need to process (UTC safe) ---
       let nextDay: Date;
       if (year.distributedAt) {
-        // move forward exactly one day from last processed
         nextDay = new Date(year.distributedAt);
-        nextDay.setDate(nextDay.getDate() + 1);
+        nextDay.setUTCHours(0, 0, 0, 0); // normalize to UTC midnight
+        nextDay.setUTCDate(nextDay.getUTCDate() + 1);
       } else {
-        // nothing processed yet → start at startDate (midnight)
         nextDay = new Date(year.startDate);
-        nextDay.setHours(0, 0, 0, 0);
+        nextDay.setUTCHours(0, 0, 0, 0); // first day midnight UTC
       }
 
       // stop if out of range
       if (nextDay > year.endDate || nextDay > now) continue;
 
+      // end of current day (UTC)
       const dayEnd = new Date(nextDay);
-      dayEnd.setHours(23, 59, 59, 999);
+      dayEnd.setUTCHours(23, 59, 59, 999);
 
       // --- investors who exist on this day ---
       const dailyInvestors = await this.prisma.investors.findMany({
@@ -165,7 +165,8 @@ export class FinancialYearService {
           const invDailyShare = invPct * dailyProfitPerYear;
 
           // calculate days so far (from effective join date)
-          const effectiveStart = inv.createdAt > year.startDate ? inv.createdAt : year.startDate;
+          const effectiveStart =
+            inv.createdAt > year.startDate ? inv.createdAt : year.startDate;
           const daysSoFar = diffDaysInclusive(effectiveStart, dayEnd);
 
           const existing = await tx.yearlyProfitDistribution.findUnique({
@@ -189,7 +190,7 @@ export class FinancialYearService {
                 percentage: invPct * 100,
                 dailyProfit: invDailyShare,
                 totalProfit: { increment: invDailyShare }, // ⬅ one day only
-                daysSoFar, // ⬅ update days so far
+                daysSoFar, // update days so far
               },
             });
           } else {
@@ -200,8 +201,8 @@ export class FinancialYearService {
                 amount: inv.amount,
                 percentage: invPct * 100,
                 dailyProfit: invDailyShare,
-                totalProfit: invDailyShare, // ⬅ only first day
-                daysSoFar: 1, // ⬅ first day
+                totalProfit: invDailyShare, // first day only
+                daysSoFar: 1, // first day
                 isRollover: year.rolloverEnabled,
                 createdAt: inv.createdAt,
               },
