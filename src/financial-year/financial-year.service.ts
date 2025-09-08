@@ -12,12 +12,13 @@ function dateOnly(d: Date) {
   return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
 }
 
+/** Inclusive day difference (end - start) */
 function diffDaysInclusive(start: Date, end: Date) {
   const s = dateOnly(start);
   const e = dateOnly(end);
   const ms = e.getTime() - s.getTime();
-  const days = Math.floor(ms / (1000 * 60 * 60 * 24));
-  return days;
+  const days = Math.floor(ms / (1000 * 60 * 60 * 24)) + 1; // inclusive
+  return Math.max(0, days);
 }
 
 @Injectable()
@@ -41,12 +42,12 @@ export class FinancialYearService {
       .toFormat('MMM dd, yyyy, hh:mm a');
   }
 
-  /** Create a new financial year (with rollover settings) */
+  //Create a financial year.
   async createFinancialYear(userId: number, data: any) {
     if (!data?.startDate || !data?.endDate) {
       throw new BadRequestException('startDate and endDate are required');
     }
-    if (!data?.totalProfit) {
+    if (data.totalProfit === undefined || data.totalProfit === null) {
       throw new BadRequestException('totalProfit is required');
     }
 
@@ -54,38 +55,33 @@ export class FinancialYearService {
     const end = new Date(data.endDate);
     if (end < start) throw new BadRequestException('endDate must be after startDate');
 
-    let settings = await this.prisma.settings.findFirst();
+    const settings = await this.prisma.settings.findFirst();
     if (!settings) throw new BadRequestException('Settings not found');
 
-    const rolloverEnabled = Boolean(data?.rolloverEnabled ?? false);
-    const rolloverPct = rolloverEnabled ? Number(data?.rolloverPercentage ?? 100) : 0;
-
     const totalDays = diffDaysInclusive(start, end);
+    const dailyProfit = totalDays > 0 ? Number(data.totalProfit) / totalDays : 0;
 
-    // Create year first
+    // Create year with status 'calculated' (this is your "pending"/active state per schema)
     const year = await this.prisma.financialYear.create({
       data: {
-        ...data,
         year: start.getFullYear(),
         periodName: data.periodName ?? `${start.getFullYear()}`,
+        totalProfit: Number(data.totalProfit),
         startDate: start,
         endDate: end,
         totalDays,
-        totalProfit: data.totalProfit,
-        rolloverEnabled,
-        rolloverPercentage: rolloverPct,
+        dailyProfit,
+        rolloverEnabled: Boolean(data?.rolloverEnabled ?? false),
+        rolloverPercentage: data?.rolloverPercentage ?? (data?.rolloverEnabled ? 100 : 0),
         currency: settings.defaultCurrency,
         createdById: userId,
       },
     });
 
-    // Immediately distribute
-    await this.distributeProfits(userId, Role.ADMIN, year.id);
-
     return year;
   }
 
-  /** Update a financial year */
+  //Update a financial year (admin only).
   async updateFinancialYear(
     adminId: number,
     role: Role,
@@ -93,6 +89,8 @@ export class FinancialYearService {
     updates: {
       periodName?: string;
       totalProfit?: number;
+      startDate?: string;
+      endDate?: string;
       rolloverEnabled?: boolean;
       rolloverPercentage?: number;
     },
@@ -102,105 +100,229 @@ export class FinancialYearService {
     const year = await this.prisma.financialYear.findUnique({ where: { id: yearId } });
     if (!year) throw new NotFoundException('Financial year not found');
 
-    if (['distributed'].includes(year.status)) {
+    if (year.status === 'DISTRIBUTED') {
       throw new BadRequestException('Cannot update a distributed year');
     }
 
     const data: any = {};
 
-    // ✅ Basic updates
     if (updates.periodName !== undefined) data.periodName = updates.periodName;
-    if (updates.totalProfit !== undefined) data.totalProfit = updates.totalProfit;
+    if (updates.totalProfit !== undefined) data.totalProfit = Number(updates.totalProfit);
 
-    // ✅ Rollover updates
-    if (updates.rolloverEnabled !== undefined) {
-      data.rolloverEnabled = updates.rolloverEnabled;
-      if (updates.rolloverEnabled) {
-        // default to 100% if not provided
-        data.rolloverPercentage = updates.rolloverPercentage ?? (year.rolloverPercentage ?? 100);
-      } else {
-        data.rolloverPercentage = 0; // disable rollover
-      }
-    } else if (updates.rolloverPercentage !== undefined) {
-      if (updates.rolloverPercentage < 0 || updates.rolloverPercentage > 100) {
-        throw new BadRequestException('Rollover percentage must be between 0 and 100');
-      }
-      data.rolloverPercentage = updates.rolloverPercentage;
+    // Dates handling: if provided, recompute totalDays and dailyProfit
+    let start = year.startDate;
+    let end = year.endDate;
+    if (updates.startDate) start = new Date(updates.startDate);
+    if (updates.endDate) end = new Date(updates.endDate);
+    if (start && end) {
+      if (end < start) throw new BadRequestException('endDate must be after startDate');
+      data.startDate = start;
+      data.endDate = end;
+      const totalDays = diffDaysInclusive(start, end);
+      data.totalDays = totalDays;
+      // if totalProfit is changing we will set dailyProfit below; otherwise use existing totalProfit
+      const totalProfit = updates.totalProfit !== undefined ? Number(updates.totalProfit) : year.totalProfit;
+      data.dailyProfit = totalDays > 0 ? totalProfit / totalDays : 0;
+    } else if (updates.totalProfit !== undefined && year.totalDays) {
+      data.dailyProfit = year.totalDays > 0 ? Number(updates.totalProfit) / year.totalDays : 0;
     }
 
-    // ✅ Save updates
+    // Rollover updates
+    if (updates.rolloverEnabled !== undefined) {
+      data.rolloverEnabled = Boolean(updates.rolloverEnabled);
+      if (updates.rolloverEnabled && updates.rolloverPercentage === undefined) {
+        data.rolloverPercentage = year.rolloverPercentage ?? 100;
+      }
+      if (!updates.rolloverEnabled) {
+        data.rolloverPercentage = 0;
+      }
+    }
+    if (updates.rolloverPercentage !== undefined) {
+      const pct = Number(updates.rolloverPercentage);
+      if (pct < 0 || pct > 100) throw new BadRequestException('rolloverPercentage must be between 0 and 100');
+      data.rolloverPercentage = pct;
+      if (pct > 0) data.rolloverEnabled = true;
+    }
+
     const updated = await this.prisma.financialYear.update({
       where: { id: yearId },
       data,
     });
 
-    // ✅ Re-distribute only if profit was updated
-    if (updates.totalProfit !== undefined) {
-      await this.distributeProfits(adminId, role, yearId);
-    }
-
     return updated;
   }
+  
+  async accrueDailyProfits(fakeNow?: Date) {
+    const now = fakeNow ?? new Date();
 
-  /** Distribute profits (calculation) — skips years that haven't started yet */
-  async distributeProfits(adminId: number, role: Role, yearId: number) {
-    if (role !== Role.ADMIN) throw new ForbiddenException('Only admin can distribute profits');
+    // Pending years only
+    const years = await this.prisma.financialYear.findMany({
+      where: { status: 'PENDING' },
+    });
+
+    if (!years.length) return { processed: 0 };
+
+    let processedYears = 0;
+
+    for (const year of years) {
+      const dailyProfitPerYear = Number(year.dailyProfit ?? 0);
+      if (dailyProfitPerYear <= 0) continue;
+
+      // --- figure out which day we need to process ---
+      let nextDay: Date;
+      if (year.distributedAt) {
+        // move forward exactly one day from last processed
+        nextDay = new Date(year.distributedAt);
+        nextDay.setDate(nextDay.getDate() + 1);
+      } else {
+        // nothing processed yet → start at startDate (midnight)
+        nextDay = new Date(year.startDate);
+        nextDay.setHours(0, 0, 0, 0);
+      }
+
+      // stop if out of range
+      if (nextDay > year.endDate || nextDay > now) continue;
+
+      const dayEnd = new Date(nextDay);
+      dayEnd.setHours(23, 59, 59, 999);
+
+      // --- investors who exist on this day ---
+      const dailyInvestors = await this.prisma.investors.findMany({
+        where: {
+          amount: { gt: 0 },
+          createdAt: { lte: dayEnd },
+        },
+      });
+
+      if (!dailyInvestors.length) continue;
+
+      const totalDailyAmount = dailyInvestors.reduce((s, i) => s + i.amount, 0);
+      if (totalDailyAmount <= 0) continue;
+
+      await this.prisma.$transaction(async (tx) => {
+        for (const inv of dailyInvestors) {
+          const invPct = inv.amount / totalDailyAmount;
+          const invDailyShare = invPct * dailyProfitPerYear;
+
+          const existing = await tx.yearlyProfitDistribution.findUnique({
+            where: {
+              financialYearId_investorId: {
+                financialYearId: year.id,
+                investorId: inv.id,
+              },
+            },
+          });
+
+          if (existing) {
+            await tx.yearlyProfitDistribution.update({
+              where: {
+                financialYearId_investorId: {
+                  financialYearId: year.id,
+                  investorId: inv.id,
+                },
+              },
+              data: {
+                percentage: invPct * 100,
+                dailyProfit: invDailyShare,
+                totalProfit: { increment: invDailyShare }, // ⬅ one day only
+              },
+            });
+          } else {
+            await tx.yearlyProfitDistribution.create({
+              data: {
+                financialYearId: year.id,
+                investorId: inv.id,
+                amount: inv.amount,
+                percentage: invPct * 100,
+                dailyProfit: invDailyShare,
+                totalProfit: invDailyShare, // ⬅ only first day
+                isRollover: year.rolloverEnabled,
+                createdAt: inv.createdAt,
+              },
+            });
+          }
+        }
+
+        // ✅ mark that we’ve processed this day
+        await tx.financialYear.update({
+          where: { id: year.id },
+          data: { distributedAt: dayEnd },
+        });
+      });
+
+      processedYears++;
+    }
+
+    return { processed: processedYears, simulatedDate: now };
+  }
+
+  // Approve/Finalize the year and perform rollover transfers.
+  async approveYear(adminId: number, role: Role, yearId: number) {
+    if (role !== Role.ADMIN) throw new ForbiddenException('Only admin can approve financial years');
 
     const year = await this.prisma.financialYear.findUnique({ where: { id: yearId } });
     if (!year) throw new NotFoundException('Financial year not found');
 
-    const investors = await this.prisma.investors.findMany({ where: { amount: { gt: 0 } } });
-    if (!investors.length) throw new BadRequestException('No investors found');
+    if (year.status === 'DISTRIBUTED') {
+      throw new BadRequestException('Financial year already distributed');
+    }
 
-    const totalAmount = investors.reduce((s, inv) => s + inv.amount, 0);
-    if (totalAmount <= 0) throw new BadRequestException('Total invested amount must be greater than 0');
+    // Get distributions for the year
+    const distributions = await this.prisma.yearlyProfitDistribution.findMany({
+      where: { financialYearId: yearId },
+    });
 
-    const results = await this.prisma.$transaction(async (tx) => {
-      const upserted: any[] = [];
+    if (!distributions.length) {
+      // If no distributions exist, it's possible accrual didn't run; but still proceed gracefully
+      throw new BadRequestException('No distributions found for this financial year. Ensure accrual ran before approval.');
+    }
 
-      for (const inv of investors) {
-        const percentage = (inv.amount / totalAmount) * 100;
-        const profitShare = (year.totalProfit * percentage) / 100;
+    const currency = year.currency;
 
-        const rec = await tx.yearlyProfitDistribution.upsert({
-          where: {
-            financialYearId_investorId: {
-              financialYearId: yearId,
-              investorId: inv.id,
-            },
-          },
-          update: {
-            amount: inv.amount,
-            percentage,
-            totalProfit: profitShare,
-            isRollover: year.rolloverEnabled,
-          },
-          create: {
-            financialYearId: yearId,
-            investorId: inv.id,
-            amount: inv.amount,
-            percentage,
-            totalProfit: profitShare,
-            isRollover: year.rolloverEnabled,
-            createdAt: inv.createdAt,
+    await this.prisma.$transaction(async (tx) => {
+      for (const dist of distributions) {
+        const totalProfit = Number(dist.totalProfit ?? 0);
+        if (totalProfit <= 0) continue;
+
+        // Create a ROLLOVER transaction linked to this financial year
+        await tx.transaction.create({
+          data: {
+            investorId: dist.investorId,
+            type: 'ROLLOVER',
+            amount: totalProfit,
+            currency,
+            date: new Date(),
+            financialYearId: year.id,
+            // withdrawSource is null for rollovers
           },
         });
 
-        upserted.push(rec);
+        // Move all accumulated profit to investor.rollover_amount (per your "auto 100% rollover" requirement)
+        await tx.investors.update({
+          where: { id: dist.investorId },
+          data: {
+            amount: { increment: totalProfit },
+            rollover_amount: { increment: totalProfit },
+          },
+        });
       }
 
+      // Mark year distributed
       await tx.financialYear.update({
         where: { id: yearId },
-        data: { status: 'calculated', distributedAt: new Date() },
+        data: {
+          status: 'DISTRIBUTED',
+          approvedById: adminId,
+          approvedAt: new Date(),
+          distributedAt: new Date(),
+        },
       });
-
-      return upserted;
     });
 
-    return { financialYearId: yearId, status: 'calculated', results };
+    return { financialYearId: yearId, status: 'DISTRIBUTED' };
   }
 
-  /** Get distributions of a year */
+  // Get distributions for a year with timezone-formatted dates (userId is used to read timezone)
   async getDistributions(yearId: number, userId: number) {
     const year = await this.prisma.financialYear.findUnique({ where: { id: yearId } });
     if (!year) throw new NotFoundException('Financial year not found');
@@ -208,46 +330,95 @@ export class FinancialYearService {
     const distributions = await this.prisma.yearlyProfitDistribution.findMany({
       where: { financialYearId: yearId },
       include: {
-        investors: { select: { id: true, fullName: true, phone: true, createdAt: true } },
+        investors: { select: { id: true, fullName: true, phone: true, createdAt: true, amount: true, rollover_amount: true } },
       },
       orderBy: { percentage: 'desc' },
     });
 
-    const formattedDistributions = await Promise.all(
-      distributions.map(async (d) => ({
-        ...d,
-        createdAt: await this.formatDate(d.createdAt, userId),
-        distributedAt: await this.formatDate(year.distributedAt, userId),
-      }))
-    );
-
-    const totalInvestors = formattedDistributions.length;
-    const totalDailyProfit = formattedDistributions.reduce(
-      (s, d) => s + (d.totalProfit ?? 0),
-      0,
-    );
-    const averageDailyProfit =
-      totalInvestors > 0 ? totalDailyProfit / year.totalDays : 0;
+    const formatted = await Promise.all(distributions.map(async (d) => ({
+      id: d.id,
+      financialYearId: d.financialYearId,
+      investorId: d.investorId,
+      amount: d.amount,
+      percentage: d.percentage,
+      totalProfit: d.totalProfit,
+      isRollover: d.isRollover,
+      createdAt: await this.formatDate(d.createdAt, userId),
+      investor: {
+        id: d.investors.id,
+        fullName: d.investors.fullName,
+        phone: d.investors.phone,
+        amount: d.investors.amount,
+        rollover_amount: d.investors.rollover_amount,
+        createdAt: await this.formatDate(d.investors.createdAt, userId),
+      },
+    })));
 
     return {
       financialYearId: yearId,
       status: year.status,
-      distributions: formattedDistributions,
+      distributions: formatted,
       summary: {
-        totalInvestors,
-        totalDailyProfit,
-        dailyProfit: averageDailyProfit,
-        averageDailyProfit,
+        totalInvestors: formatted.length,
+        totalProfit: distributions.reduce((s, d) => s + (d.totalProfit ?? 0), 0),
         totalDays: year.totalDays,
-        daysSoFar: diffDaysInclusive(year.startDate, new Date()),
+        daysSoFar: Math.max(0, diffDaysInclusive(year.startDate, new Date())),
         createdAt: await this.formatDate(year.createdAt, userId),
-        approvedAt: await this.formatDate(year.approvedAt, userId),
-        distributedAt: await this.formatDate(year.distributedAt, userId),
+        approvedAt: await this.formatDate(year.approvedAt ?? null, userId),
+        distributedAt: await this.formatDate(year.distributedAt ?? null, userId),
       },
     };
   }
 
-  /** Get all financial years (pagination + filters) */
+  // Get single financial year (for display) with formatted dates
+  async getFinancialYearById(id: number, userId: number) {
+    const year = await this.prisma.financialYear.findUnique({ where: { id } });
+    if (!year) throw new NotFoundException('Financial year not found');
+
+    const distributions = await this.prisma.yearlyProfitDistribution.findMany({
+      where: { financialYearId: id },
+      include: {
+        investors: { select: { id: true, fullName: true, phone: true, createdAt: true, amount: true, rollover_amount: true } },
+      },
+      orderBy: { percentage: 'desc' },
+    });
+
+    const formattedDistributions = await Promise.all(distributions.map(async (d) => ({
+      id: d.id,
+      investorId: d.investorId,
+      amount: d.amount,
+      percentage: d.percentage,
+      totalProfit: d.totalProfit,
+      isRollover: d.isRollover,
+      createdAt: await this.formatDate(d.createdAt, userId),
+      investor: {
+        id: d.investors.id,
+        fullName: d.investors.fullName,
+        phone: d.investors.phone,
+        amount: d.investors.amount,
+        rollover_amount: d.investors.rollover_amount,
+        createdAt: await this.formatDate(d.investors.createdAt, userId),
+      },
+    })));
+
+    return {
+      year: {
+        ...year,
+        createdAt: await this.formatDate(year.createdAt, userId),
+        approvedAt: await this.formatDate(year.approvedAt ?? null, userId),
+        distributedAt: await this.formatDate(year.distributedAt ?? null, userId),
+      },
+      distributions: formattedDistributions,
+      summary: {
+        totalInvestors: formattedDistributions.length,
+        totalProfit: distributions.reduce((s, d) => s + (d.totalProfit ?? 0), 0),
+        dailyProfit: year.dailyProfit,
+        daysSoFar: Math.max(0, diffDaysInclusive(year.startDate, new Date())),
+      },
+    };
+  }
+
+  // Get all financial years (pagination + filters)
   async getFinancialYears(
     userId: number,
     page = 1,
@@ -302,221 +473,26 @@ export class FinancialYearService {
     };
   }
 
-  /** Get single financial year */
-  async getFinancialYearById(id: number, userId: number) {
-    const year = await this.prisma.financialYear.findUnique({ where: { id } });
-    if (!year) throw new NotFoundException('Financial year not found');
-
-    const distributions = await this.prisma.yearlyProfitDistribution.findMany({
-      where: { financialYearId: id },
-      include: {
-        investors: {
-          select: {
-            id: true,
-            fullName: true,
-            phone: true,
-            createdAt: true
-          },
-        },
-      },
-      orderBy: { amount: 'desc' },
-    });
-
-    const totalInvestors = distributions.length;
-    const totalProfit = distributions.reduce((s, d) => s + (d.totalProfit ?? 0), 0);
-    const averageDailyProfit = totalInvestors > 0 ? totalProfit / year.totalDays : 0;
-
-    return {
-      year: {
-        ...year,
-        createdAt: await this.formatDate(year.createdAt, userId),
-        approvedAt: await this.formatDate(year.approvedAt, userId),
-        distributedAt: await this.formatDate(year.distributedAt, userId),
-      },
-      distributions: await Promise.all(
-        distributions.map(async (d) => ({
-          ...d,
-          createdAt: await this.formatDate(d.createdAt, userId),
-          distributedAt: await this.formatDate(year.distributedAt, userId),
-        }))
-      ),
-      summary: {
-        totalInvestors,
-        totalProfit,
-        dailyProfit: averageDailyProfit,
-        daysSoFar: Math.max(0, diffDaysInclusive(year.startDate, new Date())),
-      },
-    };
-  }
-
-  /** Approve year (credit balances per investor with isRollover flag) */
-  async approveYear(adminId: number, role: Role, yearId: number) {
-    if (role !== Role.ADMIN) throw new ForbiddenException('Only admin can approve financial years');
-
-    const year = await this.prisma.financialYear.findUnique({ where: { id: yearId } });
-    if (!year) throw new NotFoundException('Financial year not found');
-    if (year.status !== 'calculated') {
-      throw new BadRequestException("Year must be 'calculated' before approval");
-    }
-
-    const distributions = await this.prisma.yearlyProfitDistribution.findMany({
-      where: { financialYearId: yearId },
-    });
-    if (!distributions.length) throw new BadRequestException('No distributions found');
-
-    const currency = year.currency;
-
-    await this.prisma.$transaction(async (tx) => {
-      for (const dist of distributions) {
-        const totalProfit = dist.totalProfit ?? 0;
-
-        if (dist.isRollover) {
-          // ✅ Split into profit + rollover
-          const rolloverPct = year.rolloverEnabled ? year.rolloverPercentage ?? 100 : 0;
-          const payoutPct = 100 - rolloverPct;
-
-          const payoutProfit = (totalProfit * payoutPct) / 100;
-          const rolloverProfit = (totalProfit * rolloverPct) / 100;
-
-          if (payoutProfit > 0) {
-            await tx.investors.update({
-              where: { id: dist.investorId },
-              data: { rollover_amount: { increment: payoutProfit } },
-            });
-
-            await tx.transaction.create({
-              data: {
-                investorId: dist.investorId,
-                type: 'ROLLOVER',
-                amount: payoutProfit,
-                currency,
-                date: new Date(),
-              },
-            });
-          }
-
-          if (rolloverProfit > 0) {
-            await tx.investors.update({
-              where: { id: dist.investorId },
-              data: { amount: { increment: rolloverProfit } },
-            });
-
-            await tx.transaction.create({
-              data: {
-                investorId: dist.investorId,
-                type: 'ROLLOVER',
-                amount: rolloverProfit,
-                currency,
-                date: new Date(),
-              },
-            });
-          }
-        } else {
-          // ❌ No rollover → all goes to profit balance
-          await tx.investors.update({
-            where: { id: dist.investorId },
-            data: { rollover_amount: { increment: totalProfit } },
-          });
-
-          await tx.transaction.create({
-            data: {
-              investorId: dist.investorId,
-              type: 'ROLLOVER',
-              amount: totalProfit,
-              currency,
-              date: new Date(),
-            },
-          });
-        }
-      }
-
-      await tx.financialYear.update({
-        where: { id: yearId },
-        data: {
-          status: 'distributed',
-          approvedById: adminId,
-          approvedAt: new Date(),
-        },
-      });
-    });
-
-    return { financialYearId: yearId, status: 'distributed' };
-  }
-
-  /** Delete financial year (after closed) */
+  // Delete financial year and its distributions / related rollover transactions.
   async deleteFinancialYear(adminId: number, role: Role, yearId: number) {
     if (role !== Role.ADMIN) throw new ForbiddenException('Only admin can delete financial years');
 
     const year = await this.prisma.financialYear.findUnique({ where: { id: yearId } });
     if (!year) throw new NotFoundException('Financial year not found');
 
-    const distributions = await this.prisma.yearlyProfitDistribution.findMany({
-      where: { financialYearId: yearId },
-    });
+    const distributions = await this.prisma.yearlyProfitDistribution.findMany({ where: { financialYearId: yearId } });
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.yearlyProfitDistribution.deleteMany({
-        where: { financialYearId: yearId },
-      });
+      // delete distributions
+      await tx.yearlyProfitDistribution.deleteMany({ where: { financialYearId: yearId } });
 
-      // Delete only profit ledger entries created by approval
-      for (const dist of distributions) {
-        await tx.transaction.deleteMany({
-          where: {
-            investorId: dist.investorId,
-            type: { in: ['ROLLOVER'] },
-          },
-        });
-      }
+      // delete rollover transactions that reference this financial year
+      await tx.transaction.deleteMany({ where: { financialYearId: yearId } });
 
+      // delete year
       await tx.financialYear.delete({ where: { id: yearId } });
     });
 
-    return {
-      message: `Financial year ${yearId} and its related records deleted successfully`,
-      deletedId: yearId,
-    };
-  }
-
-  /** toggle isRollover for a specific investor in a given year */
-  async toggleInvestorRollover(
-    adminId: number,
-    role: Role,
-    yearId: number,
-    investorId: number,
-  ) {
-    if (role !== Role.ADMIN) {
-      throw new ForbiddenException('Only admin can update rollover settings');
-    }
-
-    const year = await this.prisma.financialYear.findUnique({ where: { id: yearId } });
-    if (!year) throw new NotFoundException('Financial year not found');
-
-    const distribution = await this.prisma.yearlyProfitDistribution.findUnique({
-      where: {
-        financialYearId_investorId: { financialYearId: yearId, investorId },
-      },
-    });
-
-    if (!distribution) {
-      throw new NotFoundException('Investor distribution not found for this financial year');
-    }
-
-    if (!year.rolloverEnabled) {
-      throw new BadRequestException('Rollover is not enabled for this financial year');
-    }
-
-    // Toggle the current value
-    const updated = await this.prisma.yearlyProfitDistribution.update({
-      where: {
-        financialYearId_investorId: { financialYearId: yearId, investorId },
-      },
-      data: { isRollover: !distribution.isRollover },
-    });
-
-    return {
-      message: `Rollover toggled for investor ${investorId} in year ${yearId}`,
-      distribution: updated,
-    };
+    return { message: `Financial year ${yearId} and its related records deleted successfully`, deletedId: yearId };
   }
 }

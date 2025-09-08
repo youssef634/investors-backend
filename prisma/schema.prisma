@@ -70,12 +70,12 @@ model Settings {
   year              Int
   periodName        String?    @unique
   totalProfit       Float
-  currency          Currency     @default(USD)
+  currency          String     @default("IQD")
   startDate         DateTime
   endDate           DateTime
   totalDays         Int?
   dailyProfit       Float?
-  status            FinancialYearStatus @default(calculated)
+  status            FinancialYearStatus @default(PENDING)
 
   // Rollover settings
   rolloverEnabled    Boolean       @default(false)
@@ -103,6 +103,7 @@ model YearlyProfitDistribution {
   investorId          Int
   amount              Float
   percentage          Float
+  dailyProfit         Float? @default(0)
   totalProfit         Float        
   isRollover      Boolean    @default(false)
   createdAt       DateTime   @default(now())
@@ -113,14 +114,9 @@ model YearlyProfitDistribution {
   @@unique([financialYearId, investorId])
 }
 
-enum Currency {
-  IQD
-  USD
-}
-
 enum FinancialYearStatus {
-  calculated
-  distributed
+  PENDING
+  DISTRIBUTED
 }
 
 enum WithdrawSource {

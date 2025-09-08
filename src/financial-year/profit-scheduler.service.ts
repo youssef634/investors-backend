@@ -7,28 +7,32 @@ import { Role } from '@prisma/client';
 export class ProfitSchedulerService {
   private readonly logger = new Logger(ProfitSchedulerService.name);
 
-  constructor(private readonly fyService: FinancialYearService) { }
+  constructor(private readonly fyService: FinancialYearService) {}
 
-  @Cron('0 0 * * *')
-  async handleHourlyProfitDistribution() {
-    this.logger.log('Running hourly profit distribution...');
+  /**
+   * Runs every midnight (server time):
+   *  1. Accrues daily profits for all active financial years.
+   *  2. Closes any years that have reached their end date (auto-approve).
+   */
+  // @Cron('* * * * *')
+  // async handleDailyProfitTasks() {
+  //   this.logger.log('Running daily profit scheduler...');
 
-    const now = new Date();
+  //   // Step 1️⃣: Accrue today's profits for all active years
+  //   const accrualResult = await this.fyService.accrueDailyProfits();
+  //   this.logger.log(`Accrued profits for ${accrualResult.processed} financial years.`);
 
-    // Find financial years that are not closed
-    const years = await this.fyService['prisma'].financialYear.findMany({
-      where: {
-        status: { in: ['calculated'] },
-      },
-    });
+  //   // Step 2️⃣: Close and approve financial years whose end date has passed
+  //   const now = new Date();
+  //   const years = await this.fyService['prisma'].financialYear.findMany({
+  //     where: { status: 'PENDING' },
+  //   });
 
-    for (const year of years) {
-      if (now >= year.endDate) {
-        if (year.status === 'calculated') {
-          this.logger.log(`Approving year ${year.id} (end date reached)`);
-          await this.fyService.approveYear(1, Role.ADMIN, year.id);
-        }
-      }
-    }
-  }
+  //   for (const year of years) {
+  //     if (now >= year.endDate) {
+  //       this.logger.log(`Approving financial year ${year.id} (end date reached).`);
+  //       await this.fyService.approveYear(1, Role.ADMIN, year.id);
+  //     }
+  //   }
+  // }
 }

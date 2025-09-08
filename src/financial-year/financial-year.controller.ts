@@ -28,6 +28,13 @@ export class FinancialYearController {
     return this.financialYearService.createFinancialYear(req.user.id, data);
   }
 
+  /** Test accrual with fake date */
+  @Get('simulate-accrual')
+  async simulateAccrual(@Query('date') date?: string) {
+    const fakeNow = date ? new Date(date) : undefined;
+    return this.financialYearService.accrueDailyProfits(fakeNow);
+  }
+
   /** Update */
   @Put(':id')
   async updateFinancialYear(
@@ -103,19 +110,5 @@ export class FinancialYearController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.financialYearService.deleteFinancialYear(req.user.id, req.user.role, id);
-  }
-
-  @Patch('rollover/:yearId/:investorId/toggle')
-  async toggleRollover(
-    @Req() req, // depends on your auth setup
-    @Param('yearId') yearId: number,
-    @Param('investorId') investorId: number,
-  ) {
-    return this.financialYearService.toggleInvestorRollover(
-      req.user.id,
-      req.user.role,
-      Number(yearId),
-      Number(investorId),
-    );
   }
 }

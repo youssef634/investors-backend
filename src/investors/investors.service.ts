@@ -147,6 +147,7 @@ export class InvestorsService {
                 amount: inv.amount,
                 rollover: inv.rollover_amount,
                 sharePercentage,
+                Currency: settings.defaultCurrency,
                 createdAt: DateTime.fromJSDate(inv.createdAt, { zone: 'utc' })
                     .setZone(timezone)
                     .toFormat('MMM dd, yyyy, hh:mm a'),

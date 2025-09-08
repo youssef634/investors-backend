@@ -24,12 +24,21 @@ export class ReportsController {
 
   /** 2️⃣ Individual investor report */
   @Get('investors/:id/:periodName')
-  async getInvestorById(
+  async getInvestorByIdAndYear(
     @Req() req,
     @Param('id') id: string,
     @Param('periodName') periodName: string,
   ) {
     return this.reportsService.getInvestorById(req.user.id, req.user.role, Number(id), periodName);
+  }
+
+  /** 2️⃣ Individual investor report */
+  @Get('investors/:id')
+  async getInvestorById(
+    @Req() req,
+    @Param('id') id: string,
+  ) {
+    return this.reportsService.getInvestorById(req.user.id, req.user.role, Number(id));
   }
 
   /** 3️⃣ Transactions report */
