@@ -105,6 +105,7 @@ model YearlyProfitDistribution {
   percentage          Float
   dailyProfit         Float? @default(0)
   totalProfit         Float        
+  daysSoFar       Int      @default(0)
   isRollover      Boolean    @default(false)
   createdAt       DateTime   @default(now())
 

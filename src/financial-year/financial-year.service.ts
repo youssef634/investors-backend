@@ -164,6 +164,10 @@ export class FinancialYearService {
           const invPct = inv.amount / totalDailyAmount;
           const invDailyShare = invPct * dailyProfitPerYear;
 
+          // calculate days so far (from effective join date)
+          const effectiveStart = inv.createdAt > year.startDate ? inv.createdAt : year.startDate;
+          const daysSoFar = diffDaysInclusive(effectiveStart, dayEnd);
+
           const existing = await tx.yearlyProfitDistribution.findUnique({
             where: {
               financialYearId_investorId: {
@@ -185,6 +189,7 @@ export class FinancialYearService {
                 percentage: invPct * 100,
                 dailyProfit: invDailyShare,
                 totalProfit: { increment: invDailyShare }, // ⬅ one day only
+                daysSoFar, // ⬅ update days so far
               },
             });
           } else {
@@ -196,6 +201,7 @@ export class FinancialYearService {
                 percentage: invPct * 100,
                 dailyProfit: invDailyShare,
                 totalProfit: invDailyShare, // ⬅ only first day
+                daysSoFar: 1, // ⬅ first day
                 isRollover: year.rolloverEnabled,
                 createdAt: inv.createdAt,
               },
@@ -303,6 +309,7 @@ export class FinancialYearService {
       percentage: d.percentage,
       dailyProfit: d.dailyProfit,
       totalProfit: d.totalProfit,
+      daysSoFar: d.daysSoFar,
       createdAt: await this.formatDate(d.createdAt, userId),
       investor: {
         id: d.investors.id,
