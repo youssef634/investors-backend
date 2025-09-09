@@ -7,7 +7,6 @@ import {
 import { PrismaService } from '../prisma/prisma.service/prisma.service';
 import { Role } from '@prisma/client';
 import { DateTime } from 'luxon';
-import { start } from 'repl';
 
 function dateOnly(d: Date) {
   return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -18,7 +17,7 @@ function diffDaysInclusive(start: Date, end: Date) {
   const s = dateOnly(start);
   const e = dateOnly(end);
   const ms = e.getTime() - s.getTime();
-  const days = Math.floor(ms / (1000 * 60 * 60 * 24)) + 1; // inclusive
+  const days = Math.floor(ms / (1000 * 60 * 60 * 24)); // inclusive
   return Math.max(0, days);
 }
 
@@ -357,7 +356,6 @@ export class FinancialYearService {
         totalProfit: distributions.reduce((s, d) => s + (d.totalProfit ?? 0), 0),
         dailyProfit: year.dailyProfit,
         totalDays: year.totalDays,
-        daysSoFar: Math.max(0, diffDaysInclusive(year.startDate, new Date())),
         createdAt: await this.formatDate(year.createdAt, userId),
         approvedAt: await this.formatDate(year.approvedAt ?? null, userId),
         distributedAt: await this.formatDate(year.distributedAt ?? null, userId),
