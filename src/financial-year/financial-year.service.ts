@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service/prisma.service';
 import { Role } from '@prisma/client';
 import { DateTime } from 'luxon';
+import { start } from 'repl';
 
 function dateOnly(d: Date) {
   return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -398,6 +399,8 @@ export class FinancialYearService {
       year: {
         ...year,
         totalDistributed: Number(year.totalProfit ?? 0),
+        startDate: await this.formatDate(year.startDate, userId),
+        endDate: await this.formatDate(year.endDate, userId),
         createdAt: await this.formatDate(year.createdAt, userId),
         approvedAt: await this.formatDate(year.approvedAt ?? null, userId),
         distributedAt: await this.formatDate(year.distributedAt ?? null, userId),
@@ -455,6 +458,8 @@ export class FinancialYearService {
     const formattedYears = await Promise.all(
       years.map(async (y) => ({
         ...y,
+        startDate: await this.formatDate(y.startDate, userId),
+        endDate: await this.formatDate(y.endDate, userId),
         createdAt: await this.formatDate(y.createdAt, userId),
         approvedAt: await this.formatDate(y.approvedAt, userId),
         distributedAt: await this.formatDate(y.distributedAt, userId),
