@@ -324,7 +324,7 @@ export class FinancialYearService {
       },
       orderBy: { percentage: 'desc' },
     });
-
+    const investors = await this.prisma.investors.findMany();
     const formatted = await Promise.all(distributions.map(async (d) => ({
       id: d.id,
       financialYearId: d.financialYearId,
@@ -351,8 +351,9 @@ export class FinancialYearService {
       status: year.status,
       distributions: formatted,
       summary: {
-        totalInvestors: formatted.length,
+        totalInvestors: investors.length,
         currency: year.currency,
+        totalDistributed: Number(year.totalProfit ?? 0),
         totalProfit: distributions.reduce((s, d) => s + (d.totalProfit ?? 0), 0),
         dailyProfit: year.dailyProfit,
         totalDays: year.totalDays,
@@ -401,7 +402,6 @@ export class FinancialYearService {
     return {
       year: {
         ...year,
-        totalDistributed: Number(year.totalProfit ?? 0),
         startDate: await this.formatDate(year.startDate, userId),
         endDate: await this.formatDate(year.endDate, userId),
         createdAt: await this.formatDate(year.createdAt, userId),
