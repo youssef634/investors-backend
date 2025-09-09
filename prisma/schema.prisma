@@ -33,7 +33,7 @@ model investors {
   id        Int      @id @default(autoincrement())
   fullName  String
   phone     String   @unique       
-  amount    Float
+  amount    Float       @default(0)
   rollover_amount Float @default(0) 
   createdAt DateTime @default(now())
 

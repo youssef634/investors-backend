@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { FinancialYearService } from './financial-year.service';
 import { Role } from '@prisma/client';
+import { DateTime } from 'luxon';
 
 function dateOnly(d: Date) {
   return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -20,10 +21,23 @@ export class ProfitSchedulerService {
 
   constructor(private readonly fyService: FinancialYearService) {}
 
-  // Run every 24 hours at midnight
-  @Cron('0 0 * * *')
+  // Run every hour → check if it's midnight in user's timezone
+  @Cron('0 * * * *') // every hour
   async handleDailyAccrualAndApproval() {
-    this.logger.log('📅 Running daily accrual & auto-approval...');
+    this.logger.log('📅 Checking if it’s midnight in local timezone...');
+
+    // Get settings to know which timezone to use
+    const settings = await this.fyService['prisma'].settings.findFirst();
+    const timezone = settings?.timezone || 'UTC';
+
+    const now = DateTime.utc().setZone(timezone);
+
+    // ✅ Only run when it's midnight in local timezone
+    if (now.hour !== 0) {
+      return; // skip until local midnight
+    }
+
+    this.logger.log(`🕛 Local midnight reached in timezone ${timezone}`);
 
     // Find all years still pending
     const years = await this.fyService['prisma'].financialYear.findMany({
@@ -46,7 +60,9 @@ export class ProfitSchedulerService {
         if (daysAccrued >= year.totalDays) {
           try {
             await this.fyService.approveYear(1, Role.ADMIN, year.id);
-            this.logger.log(`🎉 Approved and finalized year ${year.id} (daysAccrued=${daysAccrued}/${year.totalDays})`);
+            this.logger.log(
+              `🎉 Approved and finalized year ${year.id} (daysAccrued=${daysAccrued}/${year.totalDays})`,
+            );
           } catch (err) {
             this.logger.error(`❌ Failed to approve year ${year.id}`, err);
           }

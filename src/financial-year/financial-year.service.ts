@@ -51,12 +51,23 @@ export class FinancialYearService {
       throw new BadRequestException('totalProfit is required');
     }
 
-    const start = new Date(data.startDate);
-    const end = new Date(data.endDate);
-    if (end < start) throw new BadRequestException('endDate must be after startDate');
-
+    // Get settings for timezone + currency
     const settings = await this.prisma.settings.findFirst();
     if (!settings) throw new BadRequestException('Settings not found');
+    const tz = settings.timezone || 'UTC';
+
+    // Snap start and end to local day boundaries, then convert to UTC before saving
+    const start = DateTime.fromISO(data.startDate, { zone: tz })
+      .startOf('day')
+      .toUTC()
+      .toJSDate();
+
+    const end = DateTime.fromISO(data.endDate, { zone: tz })
+      .endOf('day')
+      .toUTC()
+      .toJSDate();
+
+    if (end < start) throw new BadRequestException('endDate must be after startDate');
 
     const totalDays = diffDaysInclusive(start, end);
     const dailyProfit = totalDays > 0 ? Number(data.totalProfit) / totalDays : 0;
@@ -64,8 +75,8 @@ export class FinancialYearService {
     // Always force rollover = 100%
     const year = await this.prisma.financialYear.create({
       data: {
-        year: start.getFullYear(),
-        periodName: data.periodName ?? `${start.getFullYear()}`,
+        year: DateTime.fromJSDate(start).year,
+        periodName: data.periodName ?? `${DateTime.fromJSDate(start).year}`,
         totalProfit: Number(data.totalProfit),
         startDate: start,
         endDate: end,
@@ -73,7 +84,7 @@ export class FinancialYearService {
         dailyProfit,
         rolloverEnabled: true,
         rolloverPercentage: 100,
-        currency: settings.defaultCurrency,
+        currency: "USD",
         createdById: userId,
       },
     });
@@ -122,35 +133,40 @@ export class FinancialYearService {
 
     if (!years.length) return { processed: 0 };
 
+    // Get timezone from settings
+    const settings = await this.prisma.settings.findFirst();
+    if (!settings) throw new NotFoundException('Settings not found');
+    const tz = settings.timezone || 'UTC';
+
     let processedYears = 0;
 
     for (const year of years) {
       const dailyProfitPerYear = Number(year.dailyProfit ?? 0);
       if (dailyProfitPerYear <= 0) continue;
 
-      // --- figure out which day we need to process (UTC safe) ---
-      let nextDay: Date;
+      // --- figure out which local day we need to process ---
+      let nextLocalDay: DateTime;
       if (year.distributedAt) {
-        nextDay = new Date(year.distributedAt);
-        nextDay.setUTCHours(0, 0, 0, 0); // normalize to UTC midnight
-        nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+        const lastProcessedLocal = DateTime.fromJSDate(year.distributedAt).setZone(tz).startOf('day');
+        nextLocalDay = lastProcessedLocal.plus({ days: 1 });
       } else {
-        nextDay = new Date(year.startDate);
-        nextDay.setUTCHours(0, 0, 0, 0); // first day midnight UTC
+        nextLocalDay = DateTime.fromJSDate(year.startDate).setZone(tz).startOf('day');
       }
 
-      // stop if out of range
-      if (nextDay > year.endDate || nextDay > now) continue;
+      const nowLocal = DateTime.fromJSDate(now).setZone(tz);
+      const endLocal = DateTime.fromJSDate(year.endDate).setZone(tz);
 
-      // end of current day (UTC)
-      const dayEnd = new Date(nextDay);
-      dayEnd.setUTCHours(23, 59, 59, 999);
+      // stop if out of range
+      if (nextLocalDay > endLocal || nextLocalDay > nowLocal) continue;
+
+      // end of that local day → convert to UTC for DB
+      const dayEndUtc = nextLocalDay.endOf('day').toUTC().toJSDate();
 
       // --- investors who exist on this day ---
       const dailyInvestors = await this.prisma.investors.findMany({
         where: {
           amount: { gt: 0 },
-          createdAt: { lte: dayEnd },
+          createdAt: { lte: dayEndUtc },
         },
       });
 
@@ -164,10 +180,9 @@ export class FinancialYearService {
           const invPct = inv.amount / totalDailyAmount;
           const invDailyShare = invPct * dailyProfitPerYear;
 
-          // calculate days so far (from effective join date)
-          const effectiveStart =
-            inv.createdAt > year.startDate ? inv.createdAt : year.startDate;
-          const daysSoFar = diffDaysInclusive(effectiveStart, dayEnd);
+          // calculate days so far (local)
+          const effectiveStart = inv.createdAt > year.startDate ? inv.createdAt : year.startDate;
+          const daysSoFar = diffDaysInclusive(effectiveStart, dayEndUtc);
 
           const existing = await tx.yearlyProfitDistribution.findUnique({
             where: {
@@ -189,7 +204,7 @@ export class FinancialYearService {
               data: {
                 percentage: invPct * 100,
                 dailyProfit: invDailyShare,
-                totalProfit: { increment: invDailyShare }, // ⬅ one day only
+                totalProfit: { increment: invDailyShare }, // one day only
                 daysSoFar, // update days so far
               },
             });
@@ -202,7 +217,7 @@ export class FinancialYearService {
                 percentage: invPct * 100,
                 dailyProfit: invDailyShare,
                 totalProfit: invDailyShare, // first day only
-                daysSoFar: 1, // first day
+                daysSoFar: 1,
                 isRollover: year.rolloverEnabled,
                 createdAt: inv.createdAt,
               },
@@ -210,10 +225,10 @@ export class FinancialYearService {
           }
         }
 
-        // ✅ mark that we’ve processed this day
+        // ✅ mark that we’ve processed this day (UTC value)
         await tx.financialYear.update({
           where: { id: year.id },
-          data: { distributedAt: dayEnd },
+          data: { distributedAt: dayEndUtc },
         });
       });
 
@@ -256,10 +271,6 @@ export class FinancialYearService {
         const totalProfit = Number(dist.totalProfit ?? 0);
         if (totalProfit <= 0) continue;
 
-        // amount in IQD (convert if needed)
-        const amountInIQD =
-          currency === 'USD' ? totalProfit * settings.USDtoIQD : totalProfit;
-
         // Create a ROLLOVER transaction linked to this financial year
         await tx.transaction.create({
           data: {
@@ -276,8 +287,8 @@ export class FinancialYearService {
         await tx.investors.update({
           where: { id: dist.investorId },
           data: {
-            amount: { increment: amountInIQD },
-            rollover_amount: { increment: amountInIQD },
+            amount: { increment: totalProfit },
+            rollover_amount: { increment: totalProfit },
           },
         });
       }
@@ -362,6 +373,8 @@ export class FinancialYearService {
       orderBy: { percentage: 'desc' },
     });
 
+    const investors = await this.prisma.investors.findMany();
+
     const formattedDistributions = await Promise.all(distributions.map(async (d) => ({
       id: d.id,
       investorId: d.investorId,
@@ -384,13 +397,15 @@ export class FinancialYearService {
     return {
       year: {
         ...year,
+        totalDistributed: Number(year.totalProfit ?? 0),
         createdAt: await this.formatDate(year.createdAt, userId),
         approvedAt: await this.formatDate(year.approvedAt ?? null, userId),
         distributedAt: await this.formatDate(year.distributedAt ?? null, userId),
       },
       distributions: formattedDistributions,
       summary: {
-        totalInvestors: formattedDistributions.length,
+        totalInvestors: investors.length,
+        totalDistributed: Number(year.totalProfit ?? 0),
         totalProfit: distributions.reduce((s, d) => s + (d.totalProfit ?? 0), 0),
         currency: year.currency,
         dailyProfit: year.dailyProfit,

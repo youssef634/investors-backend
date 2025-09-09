@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service/prisma.service';
-import { CreateTransactionDto, GetTransactionsDto} from './dto/transactions.dto';
+import { CreateTransactionDto, GetTransactionsDto } from './dto/transactions.dto';
 
 import { Role, TransactionType } from '@prisma/client';
 import { DateTime } from 'luxon';
@@ -22,12 +22,18 @@ export class TransactionsService {
     const investor = await this.prisma.investors.findUnique({ where: { id: dto.investorId } });
     if (!investor) throw new BadRequestException('Investor does not exist');
 
-    let settings = await this.prisma.settings.findFirst();
+    const settings = await this.prisma.settings.findFirst();
     if (!settings) throw new BadRequestException('Settings not found');
 
-    const amountInIQD = settings.defaultCurrency === 'USD'
-      ? dto.amount * settings.USDtoIQD
-      : dto.amount;
+    // ✅ Normalize amount to USD (internal currency)
+    let amountInUSD: number;
+    if (dto.currency === 'USD') {
+      amountInUSD = dto.amount;
+    } else if (dto.currency === 'IQD') {
+      amountInUSD = dto.amount / settings.USDtoIQD;
+    } else {
+      throw new BadRequestException('Unsupported currency');
+    }
 
     if (![TransactionType.DEPOSIT, TransactionType.WITHDRAWAL, TransactionType.ROLLOVER].includes(dto.type)) {
       throw new BadRequestException('Only deposit and withdrawal are allowed');
@@ -39,32 +45,32 @@ export class TransactionsService {
       let withdrawSource: 'AMOUNT' | 'ROLLOVER' | null = null;
 
       if (dto.type === TransactionType.DEPOSIT) {
-        // ✅ Just add deposit
-        updatedAmount += amountInIQD;
+        // ✅ Deposit → add USD-equivalent amount
+        updatedAmount += amountInUSD;
 
       } else if (dto.type === TransactionType.WITHDRAWAL) {
-        if (amountInIQD > investor.amount) {
+        if (amountInUSD > investor.amount) {
           throw new BadRequestException('Withdrawal exceeds total balance');
         }
 
         // ✅ Case 1: withdraw fully from rollover
-        if (amountInIQD <= investor.rollover_amount) {
-          updatedRollover -= amountInIQD;
-          updatedAmount -= amountInIQD;
+        if (amountInUSD <= investor.rollover_amount) {
+          updatedRollover -= amountInUSD;
+          updatedAmount -= amountInUSD;
           withdrawSource = 'ROLLOVER';
 
-          // ✅ Case 2: withdraw more than rollover → take rollover first then from amount
+          // ✅ Case 2: part from rollover, rest from main amount
         } else {
           const rolloverDeduct = investor.rollover_amount;
-          const amountDeduct = amountInIQD - rolloverDeduct;
+          const amountDeduct = amountInUSD - rolloverDeduct;
 
           updatedRollover = 0;
-          updatedAmount -= amountInIQD; // remove total from main amount
+          updatedAmount -= amountInUSD;
           withdrawSource = 'AMOUNT';
         }
       }
 
-      // ✅ Update investor balances
+      // ✅ Update investor balances (in USD)
       await tx.investors.update({
         where: { id: dto.investorId },
         data: {
@@ -73,13 +79,13 @@ export class TransactionsService {
         },
       });
 
-      // ✅ Save transaction
+      // ✅ Save transaction (keep original currency + amount)
       return tx.transaction.create({
         data: {
           investorId: dto.investorId,
           type: dto.type,
-          amount: dto.amount,
-          currency: settings.defaultCurrency,
+          amount: dto.amount, // original amount
+          currency: dto.currency, // original currency
           withdrawSource,
           date: new Date(),
         },

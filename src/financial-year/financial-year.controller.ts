@@ -68,7 +68,7 @@ export class FinancialYearController {
   }
 
   /** List with pagination & filters */
-  @Get(':page')
+  @Get('all/:page')
   async getFinancialYears(
     @Param('page', ParseIntPipe) page: number,
     @Req() req,
