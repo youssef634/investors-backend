@@ -323,7 +323,9 @@ export class FinancialYearService {
       },
       orderBy: { percentage: 'desc' },
     });
-    const investors = await this.prisma.investors.findMany();
+    const investors = await this.prisma.investors.findMany({
+      where: { amount: { gt: 0 } }
+    });
     const formatted = await Promise.all(distributions.map(async (d) => ({
       id: d.id,
       financialYearId: d.financialYearId,
