@@ -26,130 +26,37 @@ export class DashboardService {
 
     /** 1️⃣ Overview stats */
     async getOverview(userId: number) {
-        // Current week (Sat → Fri)
-        const now = new Date();
-        const startThisWeek = startOfWeek(now, { weekStartsOn: 6 });
-        const endThisWeek = endOfWeek(now, { weekStartsOn: 6 });
-
-        // Last week
-        const startLastWeek = startOfWeek(subWeeks(now, 1), { weekStartsOn: 6 });
-        const endLastWeek = endOfWeek(subWeeks(now, 1), { weekStartsOn: 6 });
-
-        // ✅ Get settings (for currency conversion)
+        // ✅ Get settings (for currency info if you need it later)
         let settings = await this.prisma.settings.findUnique({ where: { userId } });
         if (!settings) {
             settings = await this.prisma.settings.findFirst();
             if (!settings) throw new NotFoundException('Settings not found');
         }
-        const { defaultCurrency, USDtoIQD } = settings;
+        const { defaultCurrency } = settings;
 
-        // 1️⃣ Total investors (all-time)
+        // 1️⃣ Total investors
         const totalInvestors = await this.prisma.investors.count();
 
-        // Investors growth by week
-        const thisWeekInvestors = await this.prisma.investors.count({
-            where: { createdAt: { gte: startThisWeek, lte: endThisWeek } },
-        });
-        const lastWeekInvestors = await this.prisma.investors.count({
-            where: { createdAt: { gte: startLastWeek, lte: endLastWeek } },
-        });
-        const investorsIncrease =
-            lastWeekInvestors > 0
-                ? ((thisWeekInvestors - lastWeekInvestors) / lastWeekInvestors) * 100
-                : thisWeekInvestors > 0
-                    ? 100
-                    : 0;
-
-        // 2️⃣ Transactions (all-time, converted to default currency)
-        const allTransactions = await this.prisma.transaction.findMany({
-            select: { type: true, amount: true, currency: true, date: true },
+        // 2️⃣ Total amount (from investors table)
+        const { _sum: investorSums } = await this.prisma.investors.aggregate({
+            _sum: {
+                amount: true,
+                rollover_amount: true, // adjust if your column name is different
+            },
         });
 
-        const convert = (amount: number, currency: string) => {
-            if (currency === 'USD' && defaultCurrency === 'IQD') {
-                return amount * USDtoIQD;
-            } else if (currency === 'IQD' && defaultCurrency === 'USD') {
-                return amount / USDtoIQD;
-            }
-            return amount;
-        };
+        const totalInvested = investorSums.amount ?? 0;
+        const totalRollover = investorSums.rollover_amount ?? 0;
+        const totalAmount = totalInvested - totalRollover;
 
-        let totalDeposits = 0;
-        let totalRollovers = 0;
-        let totalWithdrawals = 0;
-
-        for (const t of allTransactions) {
-            const amt = convert(t.amount, t.currency);
-            if (t.type === 'DEPOSIT') totalDeposits += amt;
-            else if (t.type === 'ROLLOVER') totalRollovers += amt;
-            else if (t.type === 'WITHDRAWAL') totalWithdrawals += amt;
-        }
-
-        const totalAmount = totalDeposits + totalRollovers - totalWithdrawals;
-        const totalRollover = totalRollovers ;
-
-        // 3️⃣ Weekly calculations (converted)
-        const weekTransactions = (start: Date, end: Date) =>
-            allTransactions.filter((t) => t.date >= start && t.date <= end);
-
-        const calcTotals = (transactions: typeof allTransactions) => {
-            let deposits = 0,
-                rollovers = 0,
-                withdrawals = 0
-
-            for (const t of transactions) {
-                const amt = convert(t.amount, t.currency);
-                if (t.type === 'DEPOSIT') deposits += amt;
-                else if (t.type === 'ROLLOVER') rollovers += amt;
-                else if (t.type === 'WITHDRAWAL') withdrawals += amt;
-            }
-
-            return {
-                amount: deposits + rollovers - withdrawals,
-                rollover: rollovers,
-            };
-        };
-
-        const thisWeekTotals = calcTotals(weekTransactions(startThisWeek, endThisWeek));
-        const lastWeekTotals = calcTotals(weekTransactions(startLastWeek, endLastWeek));
-
-        const amountIncrease =
-            lastWeekTotals.amount > 0
-                ? ((thisWeekTotals.amount - lastWeekTotals.amount) / lastWeekTotals.amount) * 100
-                : thisWeekTotals.amount > 0
-                    ? 100
-                    : 0;
-
-        const profitIncrease =
-            lastWeekTotals.rollover > 0
-                ? ((thisWeekTotals.rollover - lastWeekTotals.rollover) / lastWeekTotals.rollover) * 100
-                : thisWeekTotals.rollover > 0
-                    ? 100
-                    : 0;
-
-        // 4️⃣ Transactions count (all-time + weekly)
-        const totalTransactions = allTransactions.length;
-        const thisWeekTransactions = weekTransactions(startThisWeek, endThisWeek).length;
-        const lastWeekTransactions = weekTransactions(startLastWeek, endLastWeek).length;
-
-        const transactionsIncrease =
-            lastWeekTransactions > 0
-                ? ((thisWeekTransactions - lastWeekTransactions) / lastWeekTransactions) * 100
-                : thisWeekTransactions > 0
-                    ? 100
-                    : 0;
+        // 3️⃣ Total transactions count
+        const totalTransactions = await this.prisma.transaction.count();
 
         return {
             totalInvestors,
             totalAmount,
             totalRollover,
             totalTransactions,
-            weeklyIncreases: {
-                investors: investorsIncrease,
-                amount: amountIncrease,
-                profit: profitIncrease,
-                transactions: transactionsIncrease,
-            },
             currency: defaultCurrency,
         };
     }
@@ -226,7 +133,7 @@ export class DashboardService {
             }
         }
 
-        const totalAmount = totalDeposits + totalRollover - totalWithdrawals;
+        const totalAmount = totalDeposits - totalWithdrawals;
         const totalRollovers = totalRollover;
 
         return {
