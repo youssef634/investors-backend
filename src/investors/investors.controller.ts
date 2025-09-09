@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -9,15 +10,18 @@ import {
   Put,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { InvestorsService } from './investors.service';
 import { AuthGuard } from '@nestjs/passport';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 @Controller('investors')
 @UseGuards(AuthGuard('jwt'))
 export class InvestorsController {
-  constructor(private readonly investorsService: InvestorsService) {}
+  constructor(private readonly investorsService: InvestorsService) { }
 
   @Post()
   async addInvestor(
@@ -33,6 +37,15 @@ export class InvestorsController {
       amount,
       createdAt,
     );
+  }
+
+  @Post('import')
+  @UseInterceptors(FileInterceptor('file'))
+  async importInvestors(@Req() req, @UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
+    return this.investorsService.importInvestorsFromExcel(req.user.id, file.buffer);
   }
 
   @Put(':id')

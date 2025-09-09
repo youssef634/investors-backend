@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { PrismaService } from '../prisma/prisma.service/prisma.service';
 import { Role } from '@prisma/client';
 import { DateTime } from 'luxon';
+import * as XLSX from 'xlsx';
 
 @Injectable()
 export class InvestorsService {
@@ -36,6 +37,82 @@ export class InvestorsService {
                 createdAt: createdAt ?? new Date(),
             },
         });
+    }
+
+    async importInvestorsFromExcel(currentUserId: number, fileBuffer: Buffer) {
+        await this.checkAdmin(currentUserId);
+
+        function excelDateToJSDate(serial?: number): Date {
+            if (!serial || isNaN(serial)) return new Date();
+            const utc_days = Math.floor(serial - 25569);
+            const utc_value = utc_days * 86400; // seconds
+            const date_info = new Date(utc_value * 1000);
+            return new Date(
+                date_info.getUTCFullYear(),
+                date_info.getUTCMonth(),
+                date_info.getUTCDate()
+            );
+        }
+
+        try {
+            const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
+            const sheetName = workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
+            const rows: any[] = XLSX.utils.sheet_to_json(sheet);
+
+            const imported: any[] = [];
+            const skipped: any[] = [];
+
+            for (const row of rows) {
+                const fullName =
+                    row['fullName'] || row['الاسم'] || row['الاسم الكامل'];
+                const phone =
+                    row['phone'] || row['رقم الهاتف'] || row['الهاتف'] || null;
+                const amount = Number(row['amount'] || row['المبلغ']);
+                const createdAt =
+                    row['createdAt'] && !isNaN(Date.parse(row['createdAt']))
+                        ? new Date(row['createdAt'])
+                        : row['تاريخ الانضمام']
+                            ? excelDateToJSDate(row['تاريخ الانضمام'])
+                            : new Date();
+
+                // fullName & amount are required
+                if (!fullName || isNaN(amount)) {
+                    skipped.push({ row, reason: 'Missing required fields' });
+                    continue;
+                }
+
+                // Only check duplicates if phone is provided
+                if (phone) {
+                    const existing = await this.prisma.investors.findUnique({
+                        where: { phone },
+                    });
+                    if (existing) {
+                        skipped.push({ row, reason: 'Phone already exists' });
+                        continue;
+                    }
+                }
+
+                // Create investor (phone can be null)
+                const investor = await this.prisma.investors.create({
+                    data: { fullName, phone, amount, createdAt },
+                });
+
+                imported.push(investor);
+            }
+
+            return {
+                importedCount: imported.length,
+                skippedCount: skipped.length,
+                imported,
+                skipped,
+            };
+        } catch (err: any) {
+            console.error('Excel import error:', err);
+            throw new BadRequestException(
+                'Invalid Excel file: ' + (err.message || 'Unknown error'),
+            );
+        }
     }
 
     async updateInvestor(
