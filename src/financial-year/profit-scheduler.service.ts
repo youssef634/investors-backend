@@ -19,7 +19,7 @@ function diffDaysInclusive(start: Date, end: Date) {
 export class ProfitSchedulerService {
   private readonly logger = new Logger(ProfitSchedulerService.name);
 
-  constructor(private readonly fyService: FinancialYearService) {}
+  constructor(private readonly fyService: FinancialYearService) { }
 
   // Run every hour → check if it's midnight in user's timezone
   @Cron('0 * * * *') // every hour
@@ -54,17 +54,22 @@ export class ProfitSchedulerService {
         );
       }
 
+      // 🔄 Reload the year after accrual to get updated distributedAt
+      const updatedYear = await this.fyService['prisma'].financialYear.findUnique({
+        where: { id: year.id },
+      });
+
       // --- Check if this year is fully accrued ---
-      if (year.distributedAt) {
-        const daysAccrued = diffDaysInclusive(year.startDate, year.distributedAt);
-        if (daysAccrued >= year.totalDays) {
+      if (updatedYear.distributedAt) {
+        const daysAccrued = diffDaysInclusive(updatedYear.startDate, updatedYear.distributedAt);
+        if (daysAccrued >= updatedYear.totalDays) {
           try {
-            await this.fyService.approveYear(1, Role.ADMIN, year.id);
+            await this.fyService.approveYear(1, Role.ADMIN, updatedYear.id);
             this.logger.log(
-              `🎉 Approved and finalized year ${year.id} (daysAccrued=${daysAccrued}/${year.totalDays})`,
+              `🎉 Approved and finalized year ${updatedYear.id} (daysAccrued=${daysAccrued}/${updatedYear.totalDays})`,
             );
           } catch (err) {
-            this.logger.error(`❌ Failed to approve year ${year.id}`, err);
+            this.logger.error(`❌ Failed to approve year ${updatedYear.id}`, err);
           }
         }
       }
