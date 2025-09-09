@@ -324,7 +324,7 @@ export class FinancialYearService {
       orderBy: { percentage: 'desc' },
     });
     const investors = await this.prisma.investors.findMany({
-      where: { amount: { gt: 0 } }
+      where: { amount: { gt: 0 } , createdAt: { lte: year.endDate } },
     });
     const formatted = await Promise.all(distributions.map(async (d) => ({
       id: d.id,
