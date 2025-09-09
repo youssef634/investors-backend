@@ -18,24 +18,60 @@ export class InvestorsService {
     async addInvestor(
         currentUserId: number,
         fullName: string,
-        phone: string,
+        phone: string | null,
         amount: number,
+        currency: 'USD' | 'IQD',
         createdAt?: Date
     ) {
         await this.checkAdmin(currentUserId);
 
-        const existingInvestor = await this.prisma.investors.findUnique({ where: { phone } });
-        if (existingInvestor) {
-            throw new BadRequestException('Investor with this phone already exists');
+        if (phone) {
+            const existingInvestor = await this.prisma.investors.findUnique({ where: { phone } });
+            if (existingInvestor) {
+                throw new BadRequestException('Investor with this phone already exists');
+            }
         }
 
-        return this.prisma.investors.create({
-            data: {
-                fullName,
-                phone,
-                amount,
-                createdAt: createdAt ?? new Date(),
-            },
+        const settings = await this.prisma.settings.findFirst();
+        if (!settings) throw new BadRequestException('Settings not found');
+
+        // ✅ Convert to USD for storage
+        let amountInUSD = 0;
+        if (amount && !isNaN(amount)) {
+            if (currency === 'USD') {
+                amountInUSD = amount;
+            } else if (currency === 'IQD') {
+                amountInUSD = amount / settings.USDtoIQD;
+            } else {
+                throw new BadRequestException('Unsupported currency');
+            }
+        }
+
+        return this.prisma.$transaction(async (tx) => {
+            // Create investor with normalized amount
+            const investor = await tx.investors.create({
+                data: {
+                    fullName,
+                    phone,
+                    amount: amountInUSD,
+                    createdAt: createdAt ?? new Date(),
+                },
+            });
+
+            // Create DEPOSIT transaction if amount > 0
+            if (amountInUSD > 0) {
+                await tx.transaction.create({
+                    data: {
+                        investorId: investor.id,
+                        type: 'DEPOSIT',
+                        amount, // original
+                        currency,
+                        date: createdAt ?? new Date(),
+                    },
+                });
+            }
+
+            return investor;
         });
     }
 
@@ -45,13 +81,9 @@ export class InvestorsService {
         function excelDateToJSDate(serial?: number): Date {
             if (!serial || isNaN(serial)) return new Date();
             const utc_days = Math.floor(serial - 25569);
-            const utc_value = utc_days * 86400; // seconds
+            const utc_value = utc_days * 86400;
             const date_info = new Date(utc_value * 1000);
-            return new Date(
-                date_info.getUTCFullYear(),
-                date_info.getUTCMonth(),
-                date_info.getUTCDate()
-            );
+            return new Date(date_info.getUTCFullYear(), date_info.getUTCMonth(), date_info.getUTCDate());
         }
 
         try {
@@ -63,12 +95,14 @@ export class InvestorsService {
             const imported: any[] = [];
             const skipped: any[] = [];
 
+            const settings = await this.prisma.settings.findFirst();
+            if (!settings) throw new BadRequestException('Settings not found');
+
             for (const row of rows) {
-                const fullName =
-                    row['fullName'] || row['الاسم'] || row['الاسم الكامل'];
-                const phone =
-                    row['phone'] || row['رقم الهاتف'] || row['الهاتف'] || null;
-                const amount = Number(row['amount'] || row['المبلغ']);
+                const fullName = row['fullName'] || row['الاسم'] || row['الاسم الكامل'];
+                const phone = row['phone'] || row['رقم الهاتف'] || row['الهاتف'] || null;
+                const amount = Number(row['amount'] || row['المبلغ']) || 0;
+                const currency = row['currency'] || row['العملة'] || 'USD'; // ✅ default USD if not provided
                 const createdAt =
                     row['createdAt'] && !isNaN(Date.parse(row['createdAt']))
                         ? new Date(row['createdAt'])
@@ -76,26 +110,49 @@ export class InvestorsService {
                             ? excelDateToJSDate(row['تاريخ الانضمام'])
                             : new Date();
 
-                // fullName & amount are required
                 if (!fullName || isNaN(amount)) {
                     skipped.push({ row, reason: 'Missing required fields' });
                     continue;
                 }
 
-                // Only check duplicates if phone is provided
                 if (phone) {
-                    const existing = await this.prisma.investors.findUnique({
-                        where: { phone },
-                    });
+                    const existing = await this.prisma.investors.findUnique({ where: { phone } });
                     if (existing) {
                         skipped.push({ row, reason: 'Phone already exists' });
                         continue;
                     }
                 }
 
-                // Create investor (phone can be null)
-                const investor = await this.prisma.investors.create({
-                    data: { fullName, phone, amount, createdAt },
+                // ✅ Convert to USD
+                let amountInUSD = 0;
+                if (currency === 'USD') {
+                    amountInUSD = amount;
+                } else if (currency === 'IQD') {
+                    amountInUSD = amount / settings.USDtoIQD;
+                } else {
+                    skipped.push({ row, reason: 'Unsupported currency' });
+                    continue;
+                }
+
+                // Wrap in transaction
+                const investor = await this.prisma.$transaction(async (tx) => {
+                    const inv = await tx.investors.create({
+                        data: { fullName, phone, amount: amountInUSD, createdAt },
+                    });
+
+                    if (amountInUSD > 0) {
+                        await tx.transaction.create({
+                            data: {
+                                investorId: inv.id,
+                                type: 'DEPOSIT',
+                                amount,
+                                currency,
+                                date: createdAt,
+                            },
+                        });
+                    }
+
+                    return inv;
                 });
 
                 imported.push(investor);
@@ -109,9 +166,7 @@ export class InvestorsService {
             };
         } catch (err: any) {
             console.error('Excel import error:', err);
-            throw new BadRequestException(
-                'Invalid Excel file: ' + (err.message || 'Unknown error'),
-            );
+            throw new BadRequestException('Invalid Excel file: ' + (err.message || 'Unknown error'));
         }
     }
 
