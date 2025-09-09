@@ -58,15 +58,18 @@ export class FinancialYearService {
     const tz = settings.timezone || 'UTC';
 
     // Snap start and end to local day boundaries, then convert to UTC before saving
-    const start = DateTime.fromISO(data.startDate, { zone: tz })
+    const start = DateTime.fromISO(data.startDate, { zone: 'utc' })
+      .setZone(tz) // shift into Baghdad
       .startOf('day')
       .toUTC()
       .toJSDate();
 
-    const end = DateTime.fromISO(data.endDate, { zone: tz })
+    const end = DateTime.fromISO(data.endDate, { zone: 'utc' })
+      .setZone(tz) // shift into Baghdad
       .endOf('day')
       .toUTC()
       .toJSDate();
+
 
     if (end < start) throw new BadRequestException('endDate must be after startDate');
 
@@ -76,7 +79,7 @@ export class FinancialYearService {
     // Always force rollover = 100%
     const year = await this.prisma.financialYear.create({
       data: {
-        year: DateTime.fromJSDate(start).year,
+        year: data.year,
         periodName: data.periodName ?? `${DateTime.fromJSDate(start).year}`,
         totalProfit: Number(data.totalProfit),
         startDate: start,
