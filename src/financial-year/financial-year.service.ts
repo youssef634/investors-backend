@@ -73,14 +73,15 @@ export class FinancialYearService {
     if (end < start) throw new BadRequestException('endDate must be after startDate');
 
     const totalDays = diffDaysInclusive(start, end);
-    const dailyProfit = totalDays > 0 ? Number(data.totalProfit) / totalDays : 0;
+    const totalProfit = Number(String(data.totalProfit).replace(/,/g, ''));
+    const dailyProfit = totalDays > 0 ? totalProfit / totalDays : 0;
 
     // Always force rollover = 100%
     const year = await this.prisma.financialYear.create({
       data: {
         year: data.year,
         periodName: data.periodName ?? `${DateTime.fromJSDate(start).year}`,
-        totalProfit: Number(data.totalProfit),
+        totalProfit: totalProfit,
         startDate: start,
         endDate: end,
         totalDays,
@@ -210,62 +211,68 @@ export class FinancialYearService {
       const totalDailyAmount = dailyInvestors.reduce((s, i) => s + i.amount, 0);
       if (totalDailyAmount <= 0) continue;
 
-      await this.prisma.$transaction(async (tx) => {
-        for (const inv of dailyInvestors) {
-          const invPct = inv.amount / totalDailyAmount;
-          const invDailyShare = invPct * dailyProfitPerYear;
+      // ✅ keep transaction open longer (60s here)
+      await this.prisma.$transaction(
+        async (tx) => {
+          for (const inv of dailyInvestors) {
+            const invPct = inv.amount / totalDailyAmount;
+            const invDailyShare = invPct * dailyProfitPerYear;
 
-          // calculate days so far (local)
-          const effectiveStart = inv.createdAt > year.startDate ? inv.createdAt : year.startDate;
-          const daysSoFar = diffDaysInclusive(effectiveStart, dayEndUtc);
+            // calculate days so far (local)
+            const effectiveStart = inv.createdAt > year.startDate ? inv.createdAt : year.startDate;
+            const daysSoFar = diffDaysInclusive(effectiveStart, dayEndUtc);
 
-          const existing = await tx.yearlyProfitDistribution.findUnique({
-            where: {
-              financialYearId_investorId: {
-                financialYearId: year.id,
-                investorId: inv.id,
-              },
-            },
-          });
-
-          if (existing) {
-            await tx.yearlyProfitDistribution.update({
+            const existing = await tx.yearlyProfitDistribution.findUnique({
               where: {
                 financialYearId_investorId: {
                   financialYearId: year.id,
                   investorId: inv.id,
                 },
               },
-              data: {
-                percentage: invPct * 100,
-                dailyProfit: invDailyShare,
-                totalProfit: { increment: invDailyShare }, // one day only
-                daysSoFar, // update days so far
-              },
             });
-          } else {
-            await tx.yearlyProfitDistribution.create({
-              data: {
-                financialYearId: year.id,
-                investorId: inv.id,
-                amount: inv.amount,
-                percentage: invPct * 100,
-                dailyProfit: invDailyShare,
-                totalProfit: invDailyShare, // first day only
-                daysSoFar: 1,
-                isRollover: year.rolloverEnabled,
-                createdAt: inv.createdAt,
-              },
-            });
-          }
-        }
 
-        // ✅ mark that we’ve processed this day (UTC value)
-        await tx.financialYear.update({
-          where: { id: year.id },
-          data: { distributedAt: dayEndUtc },
-        });
-      });
+            if (existing) {
+              await tx.yearlyProfitDistribution.update({
+                where: {
+                  financialYearId_investorId: {
+                    financialYearId: year.id,
+                    investorId: inv.id,
+                  },
+                },
+                data: {
+                  percentage: invPct * 100,
+                  dailyProfit: invDailyShare,
+                  totalProfit: { increment: invDailyShare }, // one day only
+                  daysSoFar,
+                },
+              });
+            } else {
+              await tx.yearlyProfitDistribution.create({
+                data: {
+                  financialYearId: year.id,
+                  investorId: inv.id,
+                  amount: inv.amount,
+                  percentage: invPct * 100,
+                  dailyProfit: invDailyShare,
+                  totalProfit: invDailyShare, // first day only
+                  daysSoFar: 1,
+                  isRollover: year.rolloverEnabled,
+                  createdAt: inv.createdAt,
+                },
+              });
+            }
+          }
+
+          // ✅ mark that we’ve processed this day (UTC value)
+          await tx.financialYear.update({
+            where: { id: year.id },
+            data: { distributedAt: dayEndUtc },
+          });
+        },
+        {
+          timeout: 60_000, // <-- 60 seconds (adjust as needed)
+        },
+      );
 
       processedYears++;
     }
