@@ -102,6 +102,9 @@ export class FinancialYearService {
     yearId: number,
     updates: {
       periodName?: string;
+      startDate?: string;
+      endDate?: string;
+      year?: number;
     },
   ) {
     if (role !== Role.ADMIN) throw new ForbiddenException('Only admin can update financial years');
@@ -114,16 +117,45 @@ export class FinancialYearService {
     }
 
     const data: any = {};
+
     if (updates.periodName !== undefined) {
       data.periodName = updates.periodName;
     }
 
-    const updated = await this.prisma.financialYear.update({
+    if (updates.year !== undefined) {
+      data.year = updates.year;
+    }
+
+    if (updates.startDate || updates.endDate) {
+      const settings = await this.prisma.settings.findFirst();
+      if (!settings) throw new BadRequestException('Settings not found');
+      const tz = settings.timezone || 'UTC';
+
+      const start = updates.startDate
+        ? DateTime.fromISO(updates.startDate, { zone: 'utc' }).setZone(tz).startOf('day').toUTC().toJSDate()
+        : year.startDate;
+
+      const end = updates.endDate
+        ? DateTime.fromISO(updates.endDate, { zone: 'utc' }).setZone(tz).endOf('day').toUTC().toJSDate()
+        : year.endDate;
+
+      if (end < start) throw new BadRequestException('endDate must be after startDate');
+
+      const totalDays = diffDaysInclusive(start, end);
+      const dailyProfit = totalDays > 0 ? Number(year.totalProfit) / totalDays : 0;
+
+      Object.assign(data, {
+        startDate: start,
+        endDate: end,
+        totalDays,
+        dailyProfit,
+      });
+    }
+
+    return this.prisma.financialYear.update({
       where: { id: yearId },
       data,
     });
-
-    return updated;
   }
 
   async accrueDailyProfits(fakeNow?: Date) {
@@ -278,7 +310,7 @@ export class FinancialYearService {
         await tx.transaction.create({
           data: {
             investorId: dist.investorId,
-            type: 'ROLLOVER',
+            type: 'PROFIT',
             amount: totalProfit, // keep original amount in original currency
             currency,
             date: new Date(),
@@ -324,8 +356,16 @@ export class FinancialYearService {
       orderBy: { percentage: 'desc' },
     });
     const investors = await this.prisma.investors.findMany({
-      where: { amount: { gt: 0 } , createdAt: { lte: year.endDate } },
+      where: { amount: { gt: 0 }, createdAt: { lte: year.endDate } },
     });
+
+    let total = 0;
+    if (year.status === 'DISTRIBUTED') {
+      total = distributions.length;
+    } else {
+      total = investors.length;
+    }
+
     const formatted = await Promise.all(distributions.map(async (d) => ({
       id: d.id,
       financialYearId: d.financialYearId,
@@ -352,7 +392,7 @@ export class FinancialYearService {
       status: year.status,
       distributions: formatted,
       summary: {
-        totalInvestors: investors.length,
+        totalInvestors: total,
         currency: year.currency,
         totalDistributed: Number(year.totalProfit ?? 0),
         totalProfit: distributions.reduce((s, d) => s + (d.totalProfit ?? 0), 0),

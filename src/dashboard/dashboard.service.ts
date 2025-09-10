@@ -128,7 +128,7 @@ export class DashboardService {
                 totalDeposits += convertedAmount;
             } else if (t.type === 'WITHDRAWAL') {
                 totalWithdrawals += convertedAmount;
-            } else if (t.type === 'ROLLOVER') {
+            } else if (t.type === 'PROFIT') {
                 totalRollover += convertedAmount;
             }
         }
@@ -185,7 +185,7 @@ export class DashboardService {
         const transactions = await this.prisma.transaction.findMany({
             where: {
                 date: { gte: start, lte: end },
-                type: { in: ['DEPOSIT', 'WITHDRAWAL', 'ROLLOVER'] },
+                type: { in: ['DEPOSIT', 'WITHDRAWAL', 'PROFIT'] },
             },
             orderBy: { date: 'asc' },
         });
@@ -211,7 +211,7 @@ export class DashboardService {
 
             if (tx.type === 'DEPOSIT') grouped[day].deposits.push(normalizedAmount);
             else if (tx.type === 'WITHDRAWAL') grouped[day].withdraws.push(normalizedAmount);
-            else if (tx.type === 'ROLLOVER') grouped[day].rollovers.push(normalizedAmount);
+            else if (tx.type === 'PROFIT') grouped[day].rollovers.push(normalizedAmount);
         }
 
         // Response with totals + averages

@@ -35,7 +35,7 @@ export class TransactionsService {
       throw new BadRequestException('Unsupported currency');
     }
 
-    if (![TransactionType.DEPOSIT, TransactionType.WITHDRAWAL, TransactionType.ROLLOVER].includes(dto.type)) {
+    if (![TransactionType.DEPOSIT, TransactionType.WITHDRAWAL, TransactionType.PROFIT].includes(dto.type)) {
       throw new BadRequestException('Only deposit and withdrawal are allowed');
     }
 
@@ -93,13 +93,27 @@ export class TransactionsService {
     });
   }
 
-  async deleteTransaction(currentUserId: number, id: number) {
+  async deleteTransactions(currentUserId: number, ids: number | number[]) {
     await this.checkAdmin(currentUserId);
 
-    const transaction = await this.prisma.transaction.findUnique({ where: { id } });
-    if (!transaction) throw new NotFoundException('Transaction not found');
+    const transactionIds = Array.isArray(ids) ? ids : [ids];
 
-    return this.prisma.transaction.delete({ where: { id } });
+    const existingTransactions = await this.prisma.transaction.findMany({
+      where: { id: { in: transactionIds } },
+    });
+
+    if (existingTransactions.length !== transactionIds.length) {
+      throw new NotFoundException('Some transactions were not found');
+    }
+
+    await this.prisma.transaction.deleteMany({
+      where: { id: { in: transactionIds } },
+    });
+
+    return {
+      message: `Transactions ${transactionIds.join(', ')} deleted successfully`,
+      deletedIds: transactionIds
+    };
   }
 
   async getTransactions(
@@ -130,8 +144,8 @@ export class TransactionsService {
 
     // ✅ Join FinancialYear for filtering
     const yearFilter: any = {};
-    if (query?.year) yearFilter.year = query.year;
-    if (query?.periodName) yearFilter.periodName = query.periodName;
+    if (query?.year) yearFilter.year = Number(query.year);
+    if (query?.periodName) yearFilter.periodName = { contains: query.periodName, mode: 'insensitive' };
 
     const totalTransactions = await this.prisma.transaction.count({
       where: {

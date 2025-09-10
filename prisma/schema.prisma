@@ -128,7 +128,7 @@ enum WithdrawSource {
 enum TransactionType {
   DEPOSIT
   WITHDRAWAL
-  ROLLOVER
+  PROFIT
 }
 
 enum Role {

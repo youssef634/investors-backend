@@ -21,8 +21,8 @@ import { ProfitSchedulerService } from './profit-scheduler.service';
 @Controller('financial-years')
 @UseGuards(AuthGuard('jwt'))
 export class FinancialYearController {
-  constructor(private financialYearService: FinancialYearService , 
-              private profitSchedulerService: ProfitSchedulerService
+  constructor(private financialYearService: FinancialYearService,
+    private profitSchedulerService: ProfitSchedulerService
   ) { }
 
   /** Create */
@@ -43,7 +43,7 @@ export class FinancialYearController {
     return this.profitSchedulerService.handleDailyAccrualAndApproval();
   }
 
-  /** Update */
+  /** Update Financial Year */
   @Put(':id')
   async updateFinancialYear(
     @Req() req,
@@ -51,6 +51,9 @@ export class FinancialYearController {
     @Body()
     body: {
       periodName?: string;
+      year?: number;
+      startDate?: string; 
+      endDate?: string; 
     },
   ) {
     return this.financialYearService.updateFinancialYear(
@@ -60,6 +63,7 @@ export class FinancialYearController {
       body,
     );
   }
+
 
   /** View distributions */
   @Get(':id/distributions')

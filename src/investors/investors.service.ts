@@ -192,24 +192,34 @@ export class InvestorsService {
         });
     }
 
-    async deleteInvestor(currentUserId: number, id: number) {
+    async deleteInvestors(currentUserId: number, ids: number | number[]) {
         await this.checkAdmin(currentUserId);
 
-        const investor = await this.prisma.investors.findUnique({ where: { id } });
-        if (!investor) throw new NotFoundException('Investor not found');
+        const investorIds = Array.isArray(ids) ? ids : [ids];
+
+        const existingInvestors = await this.prisma.investors.findMany({
+            where: { id: { in: investorIds } },
+        });
+
+        if (existingInvestors.length !== investorIds.length) {
+            throw new NotFoundException('Some investors were not found');
+        }
 
         await this.prisma.$transaction(async (tx) => {
             // Delete related transactions
-            await tx.transaction.deleteMany({ where: { investorId: id } });
+            await tx.transaction.deleteMany({ where: { investorId: { in: investorIds } } });
 
             // Delete related profit distributions
-            await tx.yearlyProfitDistribution.deleteMany({ where: { investorId: id } });
+            await tx.yearlyProfitDistribution.deleteMany({ where: { investorId: { in: investorIds } } });
 
-            // Finally, delete investor
-            await tx.investors.delete({ where: { id } });
+            // Finally, delete investors
+            await tx.investors.deleteMany({ where: { id: { in: investorIds } } });
         });
 
-        return { message: `Investor ${id} and related data deleted successfully`, deletedId: id };
+        return {
+            message: `Investors ${investorIds.join(', ')} and related data deleted successfully`,
+            deletedIds: investorIds
+        };
     }
 
     async getInvestors(

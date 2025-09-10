@@ -6,16 +6,29 @@ import { CreateTransactionDto, GetTransactionsDto } from './dto/transactions.dto
 @Controller('transactions')
 @UseGuards(AuthGuard('jwt'))
 export class TransactionsController {
-  constructor(private readonly transactionsService: TransactionsService) {}
+  constructor(private readonly transactionsService: TransactionsService) { }
 
   @Post()
   async addTransaction(@Req() req, @Body() dto: CreateTransactionDto) {
     return this.transactionsService.addTransaction(req.user.id, dto);
   }
 
+  // DELETE single transaction by URL param
   @Delete(':id')
-  async deleteTransaction(@Req() req, @Param('id', ParseIntPipe) id: number) {
-    return this.transactionsService.deleteTransaction(req.user.id, id);
+  async deleteTransaction(
+    @Req() req,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.transactionsService.deleteTransactions(req.user.id, id);
+  }
+
+  // DELETE multiple transactions by body
+  @Delete()
+  async deleteManyTransactions(
+    @Req() req,
+    @Body('ids') ids: number[],
+  ) {
+    return this.transactionsService.deleteTransactions(req.user.id, ids);
   }
 
   @Get(':page')

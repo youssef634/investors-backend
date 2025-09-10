@@ -67,9 +67,22 @@ export class InvestorsController {
     });
   }
 
+  // DELETE single investor by URL param
   @Delete(':id')
-  async deleteInvestor(@Req() req, @Param('id', ParseIntPipe) id: number) {
-    return this.investorsService.deleteInvestor(req.user.id, id);
+  async deleteInvestor(
+    @Req() req,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.investorsService.deleteInvestors(req.user.id, id);
+  }
+
+  // DELETE multiple investors by body
+  @Delete()
+  async deleteManyInvestors(
+    @Req() req,
+    @Body('ids') ids: number[],
+  ) {
+    return this.investorsService.deleteInvestors(req.user.id, ids);
   }
 
   @Get(':page')
