@@ -73,14 +73,15 @@ export class FinancialYearService {
     if (end < start) throw new BadRequestException('endDate must be after startDate');
 
     const totalDays = diffDaysInclusive(start, end);
-    const dailyProfit = totalDays > 0 ? Number(data.totalProfit) / totalDays : 0;
+    const totalProfit = Number(String(data.totalProfit).replace(/,/g, ''));
+    const dailyProfit = totalDays > 0 ? totalProfit / totalDays : 0;
 
     // Always force rollover = 100%
     const year = await this.prisma.financialYear.create({
       data: {
         year: data.year,
         periodName: data.periodName ?? `${DateTime.fromJSDate(start).year}`,
-        totalProfit: Number(data.totalProfit),
+        totalProfit: totalProfit,
         startDate: start,
         endDate: end,
         totalDays,
