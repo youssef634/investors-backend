@@ -1,6 +1,7 @@
 # Node / NestJS
 node_modules/
 dist/
+backups/
 .env
 
 /generated/prisma
