@@ -266,10 +266,18 @@ export class InvestorsService {
             orderBy: { createdAt: 'desc' },
         });
 
-        const totalAmountAll = (await this.prisma.investors.aggregate({ _sum: { total_amount: true } }))._sum.total_amount || 0;
-        const totalProfirAll = (await this.prisma.investors.aggregate({ _sum: { rollover_amount: true } }))._sum.rollover_amount || 0;
+        // تصحيح حساب إجمالي المبالغ
+        const totals = await this.prisma.investors.aggregate({
+            where: filters,
+            _sum: {
+                amount: true,
+                rollover_amount: true
+            }
+        });
 
-        // ✅ timezone formatting
+        const totalAmountAll = totals._sum.amount || 0;
+        const totalProfitAll = totals._sum.rollover_amount || 0;
+
         const settings = await this.prisma.settings.findFirst();
         const timezone = settings?.timezone || 'UTC';
 
@@ -280,14 +288,14 @@ export class InvestorsService {
                 id: inv.id,
                 fullName: inv.fullName,
                 phone: inv.phone,
-                amount: inv.amount, // always USD
-                rollover: inv.rollover_amount, // always USD
-                totalAmount: inv.amount + inv.rollover_amount, // ✅ total
+                amount: inv.amount,
+                rollover: inv.rollover_amount,
+                totalAmount: inv.amount + inv.rollover_amount,
                 sharePercentage,
                 currency: settings.defaultCurrency,
                 createdAt: DateTime.fromJSDate(inv.createdAt, { zone: 'utc' })
                     .setZone(timezone)
-                    .toFormat('MMM dd, yyyy'), 
+                    .toFormat('MMM dd, yyyy'),
             };
         });
 
@@ -303,11 +311,11 @@ export class InvestorsService {
         }
 
         return {
-            totalInvestors, // Now returns total count across all pages
+            totalInvestors,
             totalPages,
             currentPage: page,
             totalAmount: totalAmountAll,
-            totalRollover: totalProfirAll,
+            totalRollover: totalProfitAll,
             investors: formattedInvestors,
         };
     }
