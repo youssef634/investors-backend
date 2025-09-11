@@ -231,7 +231,13 @@ export class ReportsService {
     }
 
     /** 3️⃣ Transactions report */
-    async getTransactionsReport(userId: number, role: Role, startDate?: Date, endDate?: Date) {
+    async getTransactionsReport(
+        userId: number,
+        role: Role,
+        startDate?: Date,
+        endDate?: Date,
+        periodName?: string,   // 👈 new optional param
+    ) {
         if (role !== Role.ADMIN) {
             throw new ForbiddenException('Only admins can access this report');
         }
@@ -241,14 +247,31 @@ export class ReportsService {
             where.date = { gte: startDate, lte: endDate };
         }
 
+        // 👇 add search by financial year periodName
+        if (periodName) {
+            where.financialYear = {
+                periodName: {
+                    contains: periodName, // partial match, case-sensitive
+                    mode: 'insensitive',  // case-insensitive match
+                },
+            };
+        }
+
         const transactions = await this.prisma.transaction.findMany({
             where,
             select: {
-                id: true, type: true, amount: true, currency: true, date: true, withdrawSource: true, withdrawFromAmount: true, status: true,
+                id: true,
+                type: true,
+                amount: true,
+                currency: true,
+                date: true,
+                withdrawSource: true,
+                withdrawFromAmount: true,
+                status: true,
                 financialYear: { select: { year: true, periodName: true } },
                 investors: {
-                    select: { id: true, fullName: true }
-                }
+                    select: { id: true, fullName: true },
+                },
             },
             orderBy: { date: 'desc' },
         });
@@ -260,7 +283,7 @@ export class ReportsService {
                 investors: {
                     ...tx.investors,
                 },
-            }))
+            })),
         );
     }
 
@@ -291,6 +314,14 @@ export class ReportsService {
                 approvedAt: true,
                 distributedAt: true,
                 createdAt: true,
+                transactions: {
+                    select: {
+                        id: true,
+                        type: true,
+                        amount: true,
+                        date: true,
+                    }
+                },
                 profitDistributions: {
                     select: {
                         amount: true,
@@ -319,10 +350,10 @@ export class ReportsService {
 
         return {
             ...year,
-            startDate: await this.formatDate(year.startDate, userId),
-            endDate: await this.formatDate(year.endDate, userId),
+            startDate: await this.investorsDate(year.startDate, userId),
+            endDate: await this.investorsDate(year.endDate, userId),
             approvedAt: await this.formatDate(year.approvedAt, userId),
-            distributedAt: await this.formatDate(year.distributedAt, userId),
+            distributedAt: await this.investorsDate(year.distributedAt, userId),
             createdAt: await this.formatDate(year.createdAt, userId),
             profitDistributions: await Promise.all(
                 year.profitDistributions.map(async (pd) => ({

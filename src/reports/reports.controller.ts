@@ -47,12 +47,14 @@ export class ReportsController {
     @Req() req,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('periodName') periodName?: string,
   ) {
     return this.reportsService.getTransactionsReport(
       req.user.id,
       req.user.role,
       startDate ? new Date(startDate) : undefined,
       endDate ? new Date(endDate) : undefined,
+      periodName,
     );
   }
 
