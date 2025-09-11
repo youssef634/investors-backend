@@ -16,6 +16,7 @@ import { FinancialYearModule } from './financial-year/financial-year.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ReportsModule } from './reports/reports.module';
+import { BackupModule } from './backup/backup.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { ReportsModule } from './reports/reports.module';
     FinancialYearModule,
     DashboardModule,
     ReportsModule,
+    BackupModule,
     
   ],
   controllers: [AppController],

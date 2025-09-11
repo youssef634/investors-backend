@@ -205,6 +205,7 @@ export class TransactionsService {
         lte: query?.endDate ? new Date(query.endDate) : undefined,
       };
     if (query?.investorId) filters.investorId = Number(query.investorId);
+    if (query?.status) filters.status = query.status; // <-- add this
 
     const yearFilter: any = {};
     if (query?.year) yearFilter.year = Number(query.year);
@@ -213,6 +214,7 @@ export class TransactionsService {
     const totalTransactions = await this.prisma.transaction.count({
       where: { ...filters, financialYear: Object.keys(yearFilter).length ? yearFilter : undefined },
     });
+
     const totalPages = Math.ceil(totalTransactions / limit);
     if (page > totalPages && totalTransactions > 0) throw new NotFoundException('Page not found');
 
