@@ -77,6 +77,9 @@ export class TransactionsService {
         },
       });
 
+      // Use provided date or fallback to now
+      const transactionDate = dto.date ? new Date(dto.date) : new Date();
+
       // Create transaction record
       return tx.transaction.create({
         data: {
@@ -86,7 +89,7 @@ export class TransactionsService {
           currency: settings.defaultCurrency, // enforce default
           withdrawSource,
           withdrawFromAmount, // save portion from main amount
-          date: new Date(),
+          date: transactionDate,
         },
       });
     });
