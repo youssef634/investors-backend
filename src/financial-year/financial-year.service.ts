@@ -132,7 +132,7 @@ export class FinancialYearService {
 
       const end = DateTime.fromISO(updates.endDate, { zone: 'utc' })
         .setZone(tz)
-        .startOf('day')  // ✅ change here, no more endOf('day')
+        .startOf('day')
         .toUTC()
         .toJSDate();
 
@@ -385,7 +385,6 @@ export class FinancialYearService {
         totalDays: year.totalDays,
         createdAt: await this.formatDate(year.createdAt, userId),
         approvedAt: await this.formatDate(year.approvedAt ?? null, userId),
-        distributedAt: await this.formatDate(year.distributedAt ?? null, userId),
       },
     };
   }
