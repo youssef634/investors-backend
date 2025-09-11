@@ -16,14 +16,11 @@ import {
 import { FinancialYearService } from './financial-year.service';
 import { Role } from '@prisma/client';
 import { AuthGuard } from '@nestjs/passport';
-import { ProfitSchedulerService } from './profit-scheduler.service';
 
 @Controller('financial-years')
 @UseGuards(AuthGuard('jwt'))
 export class FinancialYearController {
-  constructor(private financialYearService: FinancialYearService,
-    private profitSchedulerService: ProfitSchedulerService
-  ) { }
+  constructor(private financialYearService: FinancialYearService) { }
 
   /** Create */
   @Post()
@@ -31,16 +28,12 @@ export class FinancialYearController {
     return this.financialYearService.createFinancialYear(req.user.id, data);
   }
 
-  /** Test accrual with fake date */
-  @Get('simulate-accrual')
-  async simulateAccrual(@Query('date') date?: string) {
-    const fakeNow = date ? new Date(date) : undefined;
-    return this.financialYearService.accrueDailyProfits(fakeNow);
-  }
-
-  @Get('test')
-  async handleDailyAccrualAndApproval() {
-    return this.profitSchedulerService.handleDailyAccrualAndApproval();
+  /** Test accrual*/
+  @Get('simulate-accrual/:id')
+  async simulateAccrual(
+    @Param('id', ParseIntPipe) id: number,
+    ) {
+    return this.financialYearService.finalizeYearlyProfits(id);
   }
 
   /** Update Financial Year */

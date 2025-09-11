@@ -129,7 +129,7 @@ enum TransactionStatus {
 }
 
 enum WithdrawSource {
-  AMOUNT
+  AMOUNT_ROLLOVER
   ROLLOVER
 }
 

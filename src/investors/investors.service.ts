@@ -271,7 +271,7 @@ export class InvestorsService {
             where: filters,
             _sum: {
                 amount: true,
-                rollover_amount: true
+                rollover_amount: true,
             }
         });
 

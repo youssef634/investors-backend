@@ -42,7 +42,7 @@ export class TransactionsService {
       let updatedAmount = investor.amount;
       let updatedTotalAmount = investor.total_amount;
       let updatedRollover = investor.rollover_amount;
-      let withdrawSource: 'AMOUNT' | 'ROLLOVER' | null = null;
+      let withdrawSource: 'AMOUNT_ROLLOVER' | 'ROLLOVER' | null = null;
       let withdrawFromAmount = 0; // Portion taken from main amount
 
       if (dto.type === TransactionType.DEPOSIT) {
@@ -63,7 +63,7 @@ export class TransactionsService {
           updatedAmount -= withdrawFromAmount;
           updatedRollover = 0;
           updatedTotalAmount -= amountInUSD;
-          withdrawSource = 'AMOUNT';
+          withdrawSource = 'AMOUNT_ROLLOVER';
         }
       }
 
@@ -125,7 +125,7 @@ export class TransactionsService {
 
         if (tx.withdrawSource === 'ROLLOVER') {
           updatedRollover += amountInUSD;
-        } else if (tx.withdrawSource === 'AMOUNT') {
+        } else if (tx.withdrawSource === 'AMOUNT_ROLLOVER') {
           const mainAmountPart = tx.withdrawFromAmount || 0;
           const rolloverPart = amountInUSD - mainAmountPart;
           updatedAmount += mainAmountPart;

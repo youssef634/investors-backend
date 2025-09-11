@@ -50,8 +50,11 @@ export class DashboardService {
         const totalRollover = investorSums.rollover_amount ?? 0;
         const totalAmount = investorSums.total_amount ?? 0;
 
-        // 3️⃣ Total transactions count
-        const totalTransactions = await this.prisma.transaction.count();
+        // 3️⃣ Total transactions count where it is not cancelled
+        const totalTransactions = await this.prisma.transaction.count({
+            where: {status: "PENDING"}
+        }
+        );
 
         return {
             totalInvestors,
@@ -109,7 +112,9 @@ export class DashboardService {
 
         // ✅ Fetch all transactions in range
         const transactions = await this.prisma.transaction.findMany({
-            where: { date: { gte: start, lte: end } },
+            where: { 
+                date: { gte: start, lte: end },
+                status: "PENDING" },
             select: { type: true, amount: true, currency: true },
         });
 
@@ -186,6 +191,7 @@ export class DashboardService {
         // Fetch transactions (now including profit + rollover)
         const transactions = await this.prisma.transaction.findMany({
             where: {
+                status: "PENDING",
                 date: { gte: start, lte: end },
                 type: { in: ['DEPOSIT', 'WITHDRAWAL', 'PROFIT'] },
             },
