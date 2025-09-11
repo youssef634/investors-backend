@@ -162,87 +162,102 @@ export class FinancialYearService {
       where: { id: yearId },
     });
     if (!year) throw new NotFoundException('Financial year not found');
-
+  
     if (year.status !== 'PENDING') {
       throw new BadRequestException('Year already finalized or distributed');
     }
-
+  
     const settings = await this.prisma.settings.findFirst();
     if (!settings) throw new NotFoundException('Settings not found');
+  
     const tz = settings.timezone || 'UTC';
-
+  
     const totalProfit = Number(year.totalProfit ?? 0);
-    const totalDays = Number(year.totalDays ?? 0);
-    if (totalProfit <= 0 || totalDays <= 0) {
-      throw new BadRequestException('Invalid financial year data');
+    if (totalProfit <= 0) {
+      throw new BadRequestException('Invalid financial year profit');
     }
-
-    // Investors active at the *end of the year*
-    const lastDayUtc = DateTime.fromJSDate(year.endDate)
-      .setZone(tz)
-      .endOf('day')
-      .toUTC()
-      .toJSDate();
-
+  
+    const yearStart = DateTime.fromJSDate(year.startDate).setZone(tz).startOf('day');
+    const yearEnd = DateTime.fromJSDate(year.endDate).setZone(tz).startOf('day');
+  
+    // عدد أيام السنة المالية الفعلية
+    const totalDays = Math.floor(yearEnd.diff(yearStart, 'days').days) + 1;
+    if (totalDays <= 0) {
+      throw new BadRequestException('Invalid financial year dates');
+    }
+  
+    const lastDayUtc = yearEnd.endOf('day').toUTC().toJSDate();
+  
+    // هات كل المستثمرين الموجودين في نهاية السنة المالية
     const investors = await this.prisma.investors.findMany({
       where: { amount: { gt: 0 }, createdAt: { lte: lastDayUtc } },
     });
-
+  
     if (!investors.length) {
       throw new BadRequestException('No active investors found for this year');
     }
-
-    // Precompute totals
-    const totalAmount = investors.reduce((s, i) => s + i.amount, 0);
-
-    // Build distribution rows in memory
-    const distributions = investors.map((inv) => {
+  
+    // احسب عدد الأيام الفعلية لكل مستثمر
+    const investorsWithDays = investors.map((inv) => {
       const invStart = DateTime.fromJSDate(inv.createdAt).setZone(tz).startOf('day');
-      const yearStart = DateTime.fromJSDate(year.startDate).setZone(tz).startOf('day');
-      const yearEnd = DateTime.fromJSDate(year.endDate).setZone(tz).startOf('day');
-
       const effectiveStart = invStart > yearStart ? invStart : yearStart;
       let daysActive = Math.floor(yearEnd.diff(effectiveStart, 'days').days) + 1;
       if (daysActive < 0) daysActive = 0;
-
-      const percentage = inv.amount / totalAmount;
-      const finalProfit = totalProfit * percentage; // full share based on capital
-      const dailyProfit = daysActive > 0 ? finalProfit / daysActive : 0;
-
+  
+      return {
+        ...inv,
+        daysActive,
+      };
+    });
+  
+    // احسب مجموع (amount × daysActive) عشان توزع الربح بشكل عادل حسب المدة
+    const weightedTotal = investorsWithDays.reduce(
+      (sum, inv) => sum + inv.amount * inv.daysActive,
+      0,
+    );
+  
+    // جهّز الداتا اللي هتتخزن
+    const distributions = investorsWithDays.map((inv) => {
+      const weight = weightedTotal > 0 ? (inv.amount * inv.daysActive) / weightedTotal : 0;
+      const finalProfit = totalProfit * weight;
+      const dailyProfit = inv.daysActive > 0 ? finalProfit / inv.daysActive : 0;
+  
       return {
         financialYearId: year.id,
         investorId: inv.id,
         amount: inv.amount,
-        percentage: percentage * 100,
+        percentage: weight * 100, // نسبة المشاركة الفعلية
         totalProfit: finalProfit,
         dailyProfit,
-        daysSoFar: daysActive,
+        daysSoFar: inv.daysActive,
         isRollover: year.rolloverEnabled,
         createdAt: inv.createdAt,
       };
     });
-
+  
     await this.prisma.$transaction(
       async (tx) => {
-        // wipe old distributions
+        // امسح أي توزيعات قديمة
         await tx.yearlyProfitDistribution.deleteMany({
           where: { financialYearId: year.id },
         });
-
-        // insert all rows in one shot 🚀
+  
+        // اضف التوزيعات الجديدة
         await tx.yearlyProfitDistribution.createMany({
           data: distributions,
         });
-
-        // update year metadata
+  
+        // حدّث بيانات السنة المالية
         await tx.financialYear.update({
           where: { id: year.id },
-          data: { distributedAt: lastDayUtc },
+          data: {
+            distributedAt: lastDayUtc,
+          },
         });
       },
-      { timeout: 60000 }, // allow up to 60s for big batches
+      { timeout: 60000 },
     );
-
+  
     return {
       financialYearId: year.id,
       status: 'PENDING',
@@ -251,6 +266,7 @@ export class FinancialYearService {
       totalProfit,
     };
   }
+  
 
   // Approve/Finalize the year and perform rollover transfers.
   async approveYear(adminId: number, role: Role, yearId: number) {
