@@ -124,13 +124,13 @@ export class FinancialYearService {
       if (!settings) throw new BadRequestException('Settings not found');
       const tz = settings.timezone || 'UTC';
 
-      const start = DateTime.fromISO(data.startDate, { zone: 'utc' })
+      const start = DateTime.fromISO(updates.startDate, { zone: 'utc' })
         .setZone(tz)
         .startOf('day')
         .toUTC()
         .toJSDate();
 
-      const end = DateTime.fromISO(data.endDate, { zone: 'utc' })
+      const end = DateTime.fromISO(updates.endDate, { zone: 'utc' })
         .setZone(tz)
         .startOf('day')  // ✅ change here, no more endOf('day')
         .toUTC()
