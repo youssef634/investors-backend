@@ -303,7 +303,7 @@ export class InvestorsService {
         }
 
         return {
-            totalInvestors: formattedInvestors.length,
+            totalInvestors, // Now returns total count across all pages
             totalPages,
             currentPage: page,
             totalAmount: totalAmountAll,
