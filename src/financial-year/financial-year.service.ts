@@ -12,13 +12,11 @@ function dateOnly(d: Date) {
   return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
 }
 
-/** Inclusive day difference (end - start) */
 function diffDaysInclusive(start: Date, end: Date) {
-  const s = dateOnly(start);
-  const e = dateOnly(end);
+  const s = dateOnly(start); // → strips to 00:00
+  const e = dateOnly(end);   // → strips to 00:00
   const ms = e.getTime() - s.getTime();
-  const days = Math.floor(ms / (1000 * 60 * 60 * 24) + 1); // inclusive
-  return Math.max(0, days);
+  return Math.floor(ms / (1000 * 60 * 60 * 24)) + 1;
 }
 
 @Injectable()
@@ -58,16 +56,17 @@ export class FinancialYearService {
 
     // Snap start and end to local day boundaries, then convert to UTC before saving
     const start = DateTime.fromISO(data.startDate, { zone: 'utc' })
-      .setZone(tz) // shift into Baghdad
+      .setZone(tz)
       .startOf('day')
       .toUTC()
       .toJSDate();
 
     const end = DateTime.fromISO(data.endDate, { zone: 'utc' })
-      .setZone(tz) // shift into Baghdad
-      .endOf('day')
+      .setZone(tz)
+      .startOf('day')  // ✅ change here, no more endOf('day')
       .toUTC()
       .toJSDate();
+
 
 
     if (end < start) throw new BadRequestException('endDate must be after startDate');
@@ -125,13 +124,18 @@ export class FinancialYearService {
       if (!settings) throw new BadRequestException('Settings not found');
       const tz = settings.timezone || 'UTC';
 
-      const start = updates.startDate
-        ? DateTime.fromISO(updates.startDate, { zone: 'utc' }).setZone(tz).startOf('day').toUTC().toJSDate()
-        : year.startDate;
+      const start = DateTime.fromISO(data.startDate, { zone: 'utc' })
+        .setZone(tz)
+        .startOf('day')
+        .toUTC()
+        .toJSDate();
 
-      const end = updates.endDate
-        ? DateTime.fromISO(updates.endDate, { zone: 'utc' }).setZone(tz).endOf('day').toUTC().toJSDate()
-        : year.endDate;
+      const end = DateTime.fromISO(data.endDate, { zone: 'utc' })
+        .setZone(tz)
+        .startOf('day')  // ✅ change here, no more endOf('day')
+        .toUTC()
+        .toJSDate();
+
 
       if (end < start) throw new BadRequestException('endDate must be after startDate');
 
@@ -173,89 +177,78 @@ export class FinancialYearService {
       throw new BadRequestException('Invalid financial year data');
     }
 
-    const yearStart = DateTime.fromJSDate(year.startDate).setZone(tz).startOf('day');
-    const yearEnd = DateTime.fromJSDate(year.endDate).setZone(tz).endOf('day');
+    // Investors active at the *end of the year*
+    const lastDayUtc = DateTime.fromJSDate(year.endDate)
+      .setZone(tz)
+      .endOf('day')
+      .toUTC()
+      .toJSDate();
 
     const investors = await this.prisma.investors.findMany({
-      where: { amount: { gt: 0 }, createdAt: { lte: yearEnd.toJSDate() } },
+      where: { amount: { gt: 0 }, createdAt: { lte: lastDayUtc } },
     });
+
     if (!investors.length) {
       throw new BadRequestException('No active investors found for this year');
     }
 
-    const dailyProfitPool = totalProfit / totalDays;
+    // Precompute totals
+    const totalAmount = investors.reduce((s, i) => s + i.amount, 0);
 
-    // Prepare profit accumulator
-    const profitMap: Record<number, number> = {};
-    const daysMap: Record<number, number> = {};
-    investors.forEach((inv) => {
-      profitMap[inv.id] = 0;
-      daysMap[inv.id] = 0;
+    // Build distribution rows in memory
+    const distributions = investors.map((inv) => {
+      const invStart = DateTime.fromJSDate(inv.createdAt).setZone(tz).startOf('day');
+      const yearStart = DateTime.fromJSDate(year.startDate).setZone(tz).startOf('day');
+      const yearEnd = DateTime.fromJSDate(year.endDate).setZone(tz).startOf('day');
+
+      const effectiveStart = invStart > yearStart ? invStart : yearStart;
+      let daysActive = Math.floor(yearEnd.diff(effectiveStart, 'days').days) + 1;
+      if (daysActive < 0) daysActive = 0;
+
+      const percentage = inv.amount / totalAmount;
+      const finalProfit = totalProfit * percentage; // full share based on capital
+      const dailyProfit = daysActive > 0 ? finalProfit / daysActive : 0;
+
+      return {
+        financialYearId: year.id,
+        investorId: inv.id,
+        amount: inv.amount,
+        percentage: percentage * 100,
+        totalProfit: finalProfit,
+        dailyProfit,
+        daysSoFar: daysActive,
+        isRollover: year.rolloverEnabled,
+        createdAt: inv.createdAt,
+      };
     });
 
-    // Simulate day by day
-    for (let i = 0; i < totalDays; i++) {
-      const currentDay = yearStart.plus({ days: i });
-
-      // Investors active on this day
-      const active = investors.filter(
-        (inv) => DateTime.fromJSDate(inv.createdAt).setZone(tz).startOf('day') <= currentDay,
-      );
-
-      if (!active.length) continue;
-
-      const totalAmount = active.reduce((s, inv) => s + inv.amount, 0);
-
-      for (const inv of active) {
-        const share = (inv.amount / totalAmount) * dailyProfitPool;
-        profitMap[inv.id] += share;
-        daysMap[inv.id] += 1;
-      }
-    }
-
-    // Save results in transaction
-    const lastDayUtc = yearEnd.toUTC().toJSDate();
-    await this.prisma.$transaction(async (tx) => {
-      await tx.yearlyProfitDistribution.deleteMany({
-        where: { financialYearId: year.id },
-      });
-
-      for (const inv of investors) {
-        const finalProfit = profitMap[inv.id];
-        if (finalProfit <= 0) continue;
-
-        const percentage = (inv.amount / investors.reduce((s, i) => s + i.amount, 0)) * 100;
-
-        await tx.yearlyProfitDistribution.create({
-          data: {
-            financialYearId: year.id,
-            investorId: inv.id,
-            amount: inv.amount,
-            percentage,
-            totalProfit: finalProfit,
-            dailyProfit: finalProfit / (daysMap[inv.id] || 1),
-            daysSoFar: daysMap[inv.id],
-            isRollover: year.rolloverEnabled,
-            createdAt: inv.createdAt,
-          },
+    await this.prisma.$transaction(
+      async (tx) => {
+        // wipe old distributions
+        await tx.yearlyProfitDistribution.deleteMany({
+          where: { financialYearId: year.id },
         });
-      }
 
-      await tx.financialYear.update({
-        where: { id: year.id },
-        data: { distributedAt: lastDayUtc },
-      });
-    });
+        // insert all rows in one shot 🚀
+        await tx.yearlyProfitDistribution.createMany({
+          data: distributions,
+        });
+
+        // update year metadata
+        await tx.financialYear.update({
+          where: { id: year.id },
+          data: { distributedAt: lastDayUtc },
+        });
+      },
+      { timeout: 60000 }, // allow up to 60s for big batches
+    );
 
     return {
       financialYearId: year.id,
       status: 'PENDING',
       processedInvestors: investors.length,
-      distributions: Object.entries(profitMap).map(([id, profit]) => ({
-        investorId: Number(id),
-        profit,
-        daysActive: daysMap[Number(id)],
-      })),
+      totalDistributed: distributions.reduce((s, d) => s + d.totalProfit, 0),
+      totalProfit,
     };
   }
 

@@ -288,9 +288,9 @@ export class DashboardService {
     async getTopInvestors(userId: number, limit: number = 5) {
         // Total amount for percentage calculation
         const totalAmountAgg = await this.prisma.investors.aggregate({
-            _sum: { amount: true },
+            _sum: { total_amount: true },
         });
-        const totalAmount = totalAmountAgg._sum.amount || 0;
+        const totalAmount = totalAmountAgg._sum.total_amount || 0;
 
         // Top investors
         const topInvestors = await this.prisma.investors.findMany({
