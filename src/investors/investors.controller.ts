@@ -30,13 +30,11 @@ export class InvestorsController {
     @Body('phone') phone: string,
     @Body('createdAt') createdAt: Date,
     @Body('amount') amount: number,
-    @Body('currency') currency: 'USD' | 'IQD',
   ) {
     return this.investorsService.addInvestor(req.user.id,
       fullName,
       phone,
       amount,
-      currency,
       createdAt,
     );
   }
@@ -55,13 +53,11 @@ export class InvestorsController {
     @Req() req,
     @Param('id', ParseIntPipe) id: number,
     @Body('fullName') fullName?: string,
-    @Body('amount') amount?: number,
     @Body('phone') phone?: string,
     @Body('createdAt') createdAt?: Date,
   ) {
     return this.investorsService.updateInvestor(req.user.id, id, {
       fullName,
-      amount,
       phone,
       createdAt,
     });

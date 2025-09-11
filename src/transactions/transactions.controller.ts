@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { TransactionsService } from './transactions.service';
 import { AuthGuard } from '@nestjs/passport';
 import { CreateTransactionDto, GetTransactionsDto } from './dto/transactions.dto';
@@ -29,6 +29,14 @@ export class TransactionsController {
     @Body('ids') ids: number[],
   ) {
     return this.transactionsService.deleteTransactions(req.user.id, ids);
+  }
+
+  @Patch(':id/cancel')
+  async cancelTransaction(
+    @Req() req,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.transactionsService.cancelTransaction(req.user.id, id);
   }
 
   @Get(':page')

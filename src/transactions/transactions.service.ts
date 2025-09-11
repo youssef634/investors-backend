@@ -1,7 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service/prisma.service';
 import { CreateTransactionDto, GetTransactionsDto } from './dto/transactions.dto';
-
 import { Role, TransactionType } from '@prisma/client';
 import { DateTime } from 'luxon';
 
@@ -25,7 +24,7 @@ export class TransactionsService {
     const settings = await this.prisma.settings.findFirst();
     if (!settings) throw new BadRequestException('Settings not found');
 
-    // ✅ Normalize amount to USD (internal currency)
+    // Normalize amount to USD
     let amountInUSD: number;
     if (dto.currency === 'USD') {
       amountInUSD = dto.amount;
@@ -36,60 +35,128 @@ export class TransactionsService {
     }
 
     if (![TransactionType.DEPOSIT, TransactionType.WITHDRAWAL, TransactionType.PROFIT].includes(dto.type)) {
-      throw new BadRequestException('Only deposit and withdrawal are allowed');
+      throw new BadRequestException('Invalid transaction type');
     }
 
     return this.prisma.$transaction(async (tx) => {
       let updatedAmount = investor.amount;
+      let updatedTotalAmount = investor.total_amount;
       let updatedRollover = investor.rollover_amount;
       let withdrawSource: 'AMOUNT' | 'ROLLOVER' | null = null;
+      let withdrawFromAmount = 0; // Portion taken from main amount
 
       if (dto.type === TransactionType.DEPOSIT) {
-        // ✅ Deposit → add USD-equivalent amount
         updatedAmount += amountInUSD;
+        updatedTotalAmount += amountInUSD;
 
       } else if (dto.type === TransactionType.WITHDRAWAL) {
         if (amountInUSD > investor.amount) {
           throw new BadRequestException('Withdrawal exceeds total balance');
         }
 
-        // ✅ Case 1: withdraw fully from rollover
         if (amountInUSD <= investor.rollover_amount) {
           updatedRollover -= amountInUSD;
-          updatedAmount -= amountInUSD;
+          updatedTotalAmount -= amountInUSD;
           withdrawSource = 'ROLLOVER';
-
-          // ✅ Case 2: part from rollover, rest from main amount
         } else {
-          const rolloverDeduct = investor.rollover_amount;
-          const amountDeduct = amountInUSD - rolloverDeduct;
-
+          withdrawFromAmount = amountInUSD - investor.rollover_amount;
+          updatedAmount -= withdrawFromAmount;
           updatedRollover = 0;
-          updatedAmount -= amountInUSD;
+          updatedTotalAmount -= amountInUSD;
           withdrawSource = 'AMOUNT';
         }
       }
 
-      // ✅ Update investor balances (in USD)
+      // Update investor balances
       await tx.investors.update({
         where: { id: dto.investorId },
         data: {
           amount: updatedAmount,
           rollover_amount: updatedRollover,
+          total_amount: updatedTotalAmount,
         },
       });
 
-      // ✅ Save transaction (keep original currency + amount)
+      // Create transaction record
       return tx.transaction.create({
         data: {
           investorId: dto.investorId,
           type: dto.type,
-          amount: dto.amount, // original amount
-          currency: dto.currency, // original currency
+          amount: dto.amount, // original entered
+          currency: settings.defaultCurrency, // enforce default
           withdrawSource,
+          withdrawFromAmount, // save portion from main amount
           date: new Date(),
         },
       });
+    });
+  }
+
+  async cancelTransaction(currentUserId: number, id: number) {
+    await this.checkAdmin(currentUserId);
+
+    const tx = await this.prisma.transaction.findUnique({ where: { id } });
+    if (!tx) throw new NotFoundException('Transaction not found');
+    if (tx.status === 'CANCELED') throw new BadRequestException('Transaction is already canceled');
+
+    const investor = await this.prisma.investors.findUnique({ where: { id: tx.investorId } });
+    if (!investor) throw new BadRequestException('Investor not found');
+
+    const settings = await this.prisma.settings.findFirst();
+    if (!settings) throw new BadRequestException('Settings not found');
+
+    // Convert transaction amount to USD
+    let amountInUSD = 0;
+    if (tx.currency === 'USD') amountInUSD = tx.amount;
+    else if (tx.currency === 'IQD') amountInUSD = tx.amount / settings.USDtoIQD;
+
+    return this.prisma.$transaction(async (prismaTx) => {
+      let updatedAmount = investor.amount;
+      let updatedRollover = investor.rollover_amount;
+      let updatedTotal = investor.total_amount;
+
+      if (tx.type === TransactionType.DEPOSIT) {
+        updatedAmount -= amountInUSD;
+        updatedTotal -= amountInUSD;
+
+      } else if (tx.type === TransactionType.WITHDRAWAL) {
+        // Reverse withdrawal
+        updatedTotal += amountInUSD;
+
+        if (tx.withdrawSource === 'ROLLOVER') {
+          updatedRollover += amountInUSD;
+        } else if (tx.withdrawSource === 'AMOUNT') {
+          const mainAmountPart = tx.withdrawFromAmount || 0;
+          const rolloverPart = amountInUSD - mainAmountPart;
+          updatedAmount += mainAmountPart;
+          updatedRollover += rolloverPart;
+        }
+      } else if (tx.type === TransactionType.PROFIT) {
+        updatedRollover -= amountInUSD;
+        updatedTotal -= amountInUSD;
+      }
+
+      if (updatedAmount < 0 || updatedRollover < 0 || updatedTotal < 0) {
+        throw new BadRequestException('Cancel would result in negative balance');
+      }
+
+      // Update investor balances
+      await prismaTx.investors.update({
+        where: { id: tx.investorId },
+        data: {
+          amount: updatedAmount,
+          rollover_amount: updatedRollover,
+          total_amount: updatedTotal,
+        },
+      });
+
+      // ✅ Mark transaction as canceled instead of deleting
+      await prismaTx.transaction.update({
+        where: { id },
+        data: { status: 'CANCELED' },
+      });
+
+      return { message: `Transaction ${id} canceled successfully`, canceledId: id };
     });
   }
 
@@ -112,15 +179,11 @@ export class TransactionsService {
 
     return {
       message: `Transactions ${transactionIds.join(', ')} deleted successfully`,
-      deletedIds: transactionIds
+      deletedIds: transactionIds,
     };
   }
 
-  async getTransactions(
-    currentUserId: number,
-    page: number = 1,
-    query?: GetTransactionsDto,
-  ) {
+  async getTransactions(currentUserId: number, page: number = 1, query?: GetTransactionsDto) {
     const user = await this.prisma.user.findUnique({ where: { id: currentUserId } });
     if (!user) throw new ForbiddenException('User not found');
 
@@ -138,20 +201,14 @@ export class TransactionsService {
         gte: query?.startDate ? new Date(query.startDate) : undefined,
         lte: query?.endDate ? new Date(query.endDate) : undefined,
       };
-    if (query?.investorId) {
-      filters.investorId = Number(query.investorId);
-    }
+    if (query?.investorId) filters.investorId = Number(query.investorId);
 
-    // ✅ Join FinancialYear for filtering
     const yearFilter: any = {};
     if (query?.year) yearFilter.year = Number(query.year);
     if (query?.periodName) yearFilter.periodName = { contains: query.periodName, mode: 'insensitive' };
 
     const totalTransactions = await this.prisma.transaction.count({
-      where: {
-        ...filters,
-        financialYear: Object.keys(yearFilter).length ? yearFilter : undefined,
-      },
+      where: { ...filters, financialYear: Object.keys(yearFilter).length ? yearFilter : undefined },
     });
     const totalPages = Math.ceil(totalTransactions / limit);
     if (page > totalPages && totalTransactions > 0) throw new NotFoundException('Page not found');
@@ -159,20 +216,16 @@ export class TransactionsService {
     const skip = (page - 1) * limit;
 
     const transactions = await this.prisma.transaction.findMany({
-      where: {
-        ...filters,
-        financialYear: Object.keys(yearFilter).length ? yearFilter : undefined,
-      },
+      where: { ...filters, financialYear: Object.keys(yearFilter).length ? yearFilter : undefined },
       skip,
       take: Number(limit),
       orderBy: { date: 'desc' },
       include: {
         investors: { select: { fullName: true, phone: true } },
-        financialYear: { select: { year: true, periodName: true } }, // 👈 include
+        financialYear: { select: { year: true, periodName: true } },
       },
     });
 
-    // ✅ Timezone formatting
     let settings = await this.prisma.settings.findFirst();
     if (!settings) throw new NotFoundException('Admin settings not found');
     const timezone = settings?.timezone || 'UTC';

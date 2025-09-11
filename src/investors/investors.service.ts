@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service/prisma.service';
 import { Role } from '@prisma/client';
-import { DateTime } from 'luxon';
+import { DateTime, Settings } from 'luxon';
 import * as XLSX from 'xlsx';
 
 @Injectable()
@@ -20,52 +20,47 @@ export class InvestorsService {
         fullName: string,
         phone: string | null,
         amount: number,
-        currency: 'USD' | 'IQD',
         createdAt?: Date
     ) {
         await this.checkAdmin(currentUserId);
 
         if (phone) {
             const existingInvestor = await this.prisma.investors.findUnique({ where: { phone } });
-            if (existingInvestor) {
-                throw new BadRequestException('Investor with this phone already exists');
-            }
+            if (existingInvestor) throw new BadRequestException('Investor with this phone already exists');
         }
 
         const settings = await this.prisma.settings.findFirst();
         if (!settings) throw new BadRequestException('Settings not found');
 
-        // ✅ Convert to USD for storage
+        const currency = settings.defaultCurrency;
+
+        // ✅ Normalize to USD
         let amountInUSD = 0;
-        if (amount && !isNaN(amount)) {
-            if (currency === 'USD') {
-                amountInUSD = amount;
-            } else if (currency === 'IQD') {
-                amountInUSD = amount / settings.USDtoIQD;
-            } else {
-                throw new BadRequestException('Unsupported currency');
-            }
+        if (!isNaN(amount)) {
+            if (currency === 'USD') amountInUSD = amount;
+            else if (currency === 'IQD') amountInUSD = amount / settings.USDtoIQD;
+            else throw new BadRequestException('Unsupported currency');
         }
 
         return this.prisma.$transaction(async (tx) => {
-            // Create investor with normalized amount
             const investor = await tx.investors.create({
                 data: {
                     fullName,
                     phone,
                     amount: amountInUSD,
+                    rollover_amount: 0,
+                    total_amount: amountInUSD, // ✅ save total
                     createdAt: createdAt ?? new Date(),
                 },
             });
 
-            // Create DEPOSIT transaction if amount > 0
             if (amountInUSD > 0) {
                 await tx.transaction.create({
                     data: {
                         investorId: investor.id,
                         type: 'DEPOSIT',
-                        amount, // original
-                        currency,
+                        amount, // original entered amount
+                        currency: settings.defaultCurrency, // ✅ force default
                         date: createdAt ?? new Date(),
                     },
                 });
@@ -102,7 +97,7 @@ export class InvestorsService {
                 const fullName = row['fullName'] || row['الاسم'] || row['الاسم الكامل'];
                 const phone = row['phone'] || row['رقم الهاتف'] || row['الهاتف'] || null;
                 const amount = Number(row['amount'] || row['المبلغ']) || 0;
-                const currency = row['currency'] || row['العملة'] || 'USD'; // ✅ default USD if not provided
+                const currency = row['currency'] || row['العملة'] || settings.defaultCurrency; // ✅ default USD if not provided
                 const createdAt =
                     row['createdAt'] && !isNaN(Date.parse(row['createdAt']))
                         ? new Date(row['createdAt'])
@@ -173,7 +168,7 @@ export class InvestorsService {
     async updateInvestor(
         currentUserId: number,
         id: number,
-        dto: { fullName?: string; amount?: number; phone?: string; createdAt?: Date }
+        dto: { fullName?: string; phone?: string; createdAt?: Date }
     ) {
         await this.checkAdmin(currentUserId);
 
@@ -182,7 +177,6 @@ export class InvestorsService {
 
         const updateData: any = {};
         if (dto.fullName !== undefined) updateData.fullName = dto.fullName;
-        if (dto.amount !== undefined) updateData.amount = dto.amount;
         if (dto.phone !== undefined) updateData.phone = dto.phone;          // ✅ update phone
         if (dto.createdAt !== undefined) updateData.createdAt = dto.createdAt; // ✅ update createdAt
 
@@ -272,7 +266,7 @@ export class InvestorsService {
             orderBy: { createdAt: 'desc' },
         });
 
-        const totalAmountAll = (await this.prisma.investors.aggregate({ _sum: { amount: true } }))._sum.amount || 0;
+        const totalAmountAll = (await this.prisma.investors.aggregate({ _sum: { total_amount: true } }))._sum.total_amount || 0;
         const totalProfirAll = (await this.prisma.investors.aggregate({ _sum: { rollover_amount: true } }))._sum.rollover_amount || 0;
 
         // ✅ timezone formatting
@@ -286,13 +280,14 @@ export class InvestorsService {
                 id: inv.id,
                 fullName: inv.fullName,
                 phone: inv.phone,
-                amount: inv.amount,
-                rollover: inv.rollover_amount,
+                amount: inv.amount, // always USD
+                rollover: inv.rollover_amount, // always USD
+                totalAmount: inv.amount + inv.rollover_amount, // ✅ total
                 sharePercentage,
-                Currency: settings.defaultCurrency,
+                currency: settings.defaultCurrency,
                 createdAt: DateTime.fromJSDate(inv.createdAt, { zone: 'utc' })
                     .setZone(timezone)
-                    .toFormat('MMM dd, yyyy, hh:mm a'),
+                    .toFormat('MMM dd, yyyy'), 
             };
         });
 

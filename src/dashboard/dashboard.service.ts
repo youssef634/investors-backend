@@ -21,7 +21,7 @@ export class DashboardService {
 
         return DateTime.fromJSDate(date, { zone: 'utc' })
             .setZone(timezone)
-            .toFormat('MMM dd, yyyy, hh:mm a');
+            .toFormat('MMM dd, yyyy');
     }
 
     /** 1️⃣ Overview stats */
@@ -41,21 +41,23 @@ export class DashboardService {
         const { _sum: investorSums } = await this.prisma.investors.aggregate({
             _sum: {
                 amount: true,
-                rollover_amount: true, // adjust if your column name is different
+                rollover_amount: true,
+                total_amount: true, // adjust if your column name is different
             },
         });
 
         const totalInvested = investorSums.amount ?? 0;
         const totalRollover = investorSums.rollover_amount ?? 0;
-        const totalAmount = totalInvested - totalRollover;
+        const totalAmount = investorSums.total_amount ?? 0;
 
         // 3️⃣ Total transactions count
         const totalTransactions = await this.prisma.transaction.count();
 
         return {
             totalInvestors,
-            totalAmount,
+            totalInvested,
             totalRollover,
+            totalAmount,
             totalTransactions,
             currency: defaultCurrency,
         };

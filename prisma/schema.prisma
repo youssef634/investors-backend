@@ -30,12 +30,13 @@ model User {
 }
 
 model investors {
-  id        Int      @id @default(autoincrement())
-  fullName  String
-  phone     String?     @unique       
-  amount    Float       @default(0)
-  rollover_amount Float @default(0) 
-  createdAt DateTime @default(now())
+  id                  Int      @id @default(autoincrement())
+  fullName            String
+  phone               String?     @unique       
+  amount              Float       @default(0)
+  rollover_amount     Float       @default(0) 
+  total_amount        Float       @default(0) 
+  createdAt           DateTime    @default(now())
 
   transactions        Transaction[] 
   profitDistributions YearlyProfitDistribution[]
@@ -49,7 +50,9 @@ model Transaction {
   currency      String
   date          DateTime @default(now())
   withdrawSource WithdrawSource? 
+  withdrawFromAmount Float?
   financialYearId Int?       
+  status            TransactionStatus @default(PENDING)
 
   investors      investors     @relation(fields: [investorId], references: [id])
   financialYear  FinancialYear? @relation(fields: [financialYearId], references: [id])
@@ -118,6 +121,11 @@ model YearlyProfitDistribution {
 enum FinancialYearStatus {
   PENDING
   DISTRIBUTED
+}
+
+enum TransactionStatus {
+  PENDING
+  CANCELED
 }
 
 enum WithdrawSource {

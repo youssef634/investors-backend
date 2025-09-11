@@ -29,6 +29,22 @@ export class ReportsService {
             .toFormat('MMM dd, yyyy, hh:mm a');
     }
 
+    private async investorsDate(date: Date | null, userId: number): Promise<string | null> {
+        if (!date) return null;
+
+        let settings = await this.prisma.settings.findUnique({ where: { userId } });
+        if (!settings) {
+            settings = await this.prisma.settings.findFirst();
+            if (!settings) throw new NotFoundException('Settings not found');
+        }
+
+        const timezone = settings?.timezone || 'UTC';
+
+        return DateTime.fromJSDate(date, { zone: 'utc' })
+            .setZone(timezone)
+            .toFormat('MMM dd, yyyy');
+    }
+
     /** 1️⃣ Investors report */
     async getInvestorsReport(userId: number, role: Role, startDate?: Date, endDate?: Date) {
         if (role !== Role.ADMIN) {
@@ -48,6 +64,7 @@ export class ReportsService {
                 phone: true,
                 amount: true,
                 rollover_amount: true,
+                total_amount: true,
                 createdAt: true,
                 profitDistributions: {
                     select: {
@@ -96,7 +113,7 @@ export class ReportsService {
                 return {
                     ...inv,
                     sharePercentage,
-                    createdAt: await this.formatDate(inv.createdAt, userId),
+                    createdAt: await this.investorsDate(inv.createdAt, userId),
                     profitDistributions: await Promise.all(
                         inv.profitDistributions.map(async (pd) => ({
                             ...pd,
@@ -129,6 +146,7 @@ export class ReportsService {
                 phone: true,
                 amount: true,
                 rollover_amount: true,
+                total_amount: true,
                 createdAt: true,
                 transactions: {
                     select: {
@@ -138,6 +156,8 @@ export class ReportsService {
                         currency: true,
                         date: true,
                         withdrawSource: true,
+                        withdrawFromAmount: true,
+                        status: true,
                         financialYear: { select: { year: true, periodName: true } },
                     },
                     orderBy: { date: 'desc' },
@@ -187,7 +207,7 @@ export class ReportsService {
         return {
             ...investor,
             sharePercentage, // ⬅ added here
-            createdAt: await this.formatDate(investor.createdAt, userId),
+            createdAt: await this.investorsDate(investor.createdAt, userId),
             transactions: await Promise.all(
                 investor.transactions.map(async (tx) => ({
                     ...tx,
@@ -224,7 +244,7 @@ export class ReportsService {
         const transactions = await this.prisma.transaction.findMany({
             where,
             select: {
-                id: true, type: true, amount: true, currency: true, date: true, withdrawSource: true,
+                id: true, type: true, amount: true, currency: true, date: true, withdrawSource: true, withdrawFromAmount: true, status: true,
                 financialYear: { select: { year: true, periodName: true } },
                 investors: {
                     select: { id: true, fullName: true }
@@ -286,6 +306,7 @@ export class ReportsService {
                                 phone: true,
                                 amount: true,
                                 rollover_amount: true,
+                                total_amount: true,
                                 createdAt: true,
                             },
                         },
@@ -308,7 +329,7 @@ export class ReportsService {
                     ...pd,
                     investors: {
                         ...pd.investors,
-                        createdAt: await this.formatDate(pd.investors.createdAt, userId),
+                        createdAt: await this.investorsDate(pd.investors.createdAt, userId),
                     },
                 }))
             ),

@@ -8,7 +8,6 @@ import { PrismaModule } from './prisma/prisma.module';
 import { PrismaService } from './prisma/prisma.service/prisma.service';
 import { JwtStrategy } from './auth/strategy';
 import { LoginModule } from './auth/login/login.module';
-import { UsersModule } from './users/users.module';
 import { ProfileModule } from './profile/profile.module';
 import { InvestorsModule } from './investors/investors.module';
 import { TransactionsModule } from './transactions/transactions.module';
@@ -41,7 +40,6 @@ import { ReportsModule } from './reports/reports.module';
 
     PrismaModule,
     LoginModule,
-    UsersModule,
     ProfileModule,
     InvestorsModule,
     TransactionsModule,
