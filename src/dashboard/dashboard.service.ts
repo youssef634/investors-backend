@@ -52,7 +52,7 @@ export class DashboardService {
 
         // 3️⃣ Total transactions count where it is not cancelled
         const totalTransactions = await this.prisma.transaction.count({
-            where: {status: "PENDING"}
+            where: { status: "PENDING" }
         }
         );
 
@@ -66,7 +66,7 @@ export class DashboardService {
         };
     }
 
-    /** 2️⃣ Aggregates by period */
+    /** 2️⃣ Aggregates by period (amount + rollover) */
     async getAggregates(
         period: 'week' | 'month' | 'year' = 'week',
         userId?: number
@@ -110,45 +110,61 @@ export class DashboardService {
 
         const { defaultCurrency, USDtoIQD } = settings;
 
-        // ✅ Fetch all transactions in range
+        // ✅ Fetch all *non-canceled* transactions in range
         const transactions = await this.prisma.transaction.findMany({
-            where: { 
+            where: {
                 date: { gte: start, lte: end },
-                status: "PENDING" },
-            select: { type: true, amount: true, currency: true },
+                status: { not: 'CANCELED' },
+            },
+            select: {
+                type: true,
+                amount: true,
+                currency: true,
+                withdrawSource: true,
+                withdrawFromAmount: true,
+            },
         });
 
-        let totalDeposits = 0;
-        let totalWithdrawals = 0;
-        let totalRollover = 0;
+        let totalAmount = 0;   // 🔹 investor.amount
+        let totalRollover = 0; // 🔹 investor.rollover
 
         for (const t of transactions) {
-            // Convert amount to default currency
-            let convertedAmount = t.amount;
+            // Convert to default currency
+            let amt = t.amount;
             if (t.currency === 'USD' && defaultCurrency === 'IQD') {
-                convertedAmount = t.amount * USDtoIQD;
+                amt = t.amount * USDtoIQD;
             } else if (t.currency === 'IQD' && defaultCurrency === 'USD') {
-                convertedAmount = t.amount / USDtoIQD;
+                amt = t.amount / USDtoIQD;
             }
 
             if (t.type === 'DEPOSIT') {
-                totalDeposits += convertedAmount;
+                totalAmount += amt;
+
             } else if (t.type === 'WITHDRAWAL') {
-                totalWithdrawals += convertedAmount;
+                if (t.withdrawSource === 'ROLLOVER') {
+                    // Entire withdrawal from rollover
+                    totalRollover -= amt;
+                } else if (t.withdrawSource === 'AMOUNT_ROLLOVER') {
+                    // Part from amount, part from rollover
+                    const fromAmount = t.withdrawFromAmount || 0;
+                    const fromRollover = amt - fromAmount;
+
+                    totalAmount -= fromAmount;
+                    totalRollover -= fromRollover;
+                }
+
             } else if (t.type === 'PROFIT') {
-                totalRollover += convertedAmount;
+                // Profit always goes into rollover
+                totalRollover += amt;
             }
         }
-
-        const totalAmount = totalDeposits - totalWithdrawals;
-        const totalRollovers = totalRollover;
 
         return {
             period,
             startDate: start,
             endDate: end,
             totalAmount,
-            totalRollover: totalRollovers,
+            totalRollover,
             currency: defaultCurrency,
         };
     }
