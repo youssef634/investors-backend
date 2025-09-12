@@ -15,7 +15,7 @@ export class DashboardController {
 
     // 2️⃣ Aggregated amounts/profits by period
     @Get('aggregates')
-    async getAggregates(@Req() req, @Query('period') period: 'week' | 'month' | 'year') {
+    async getAggregates(@Req() req, @Query('period') period: 'week' | 'month' | 'year' | 'all') {
         return this.dashboardService.getAggregates(period, req.user.id);
     }
 

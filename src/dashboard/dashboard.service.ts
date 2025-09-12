@@ -68,15 +68,15 @@ export class DashboardService {
 
     /** 2️⃣ Aggregates by period (amount + rollover) */
     async getAggregates(
-        period: 'week' | 'month' | 'year' = 'week',
+        period: 'week' | 'month' | 'year' | 'all' = 'all',
         userId?: number
     ) {
+        let start: Date | undefined;
+        let end: Date | undefined;
         const now = new Date();
-        let start: Date, end: Date;
 
         switch (period) {
             case 'week': {
-                // ✅ Week starts on Saturday, ends on Friday
                 const currentDay = now.getDay(); // 0 = Sunday, 6 = Saturday
                 const diffToSaturday = (currentDay + 7 - 6) % 7;
 
@@ -97,25 +97,29 @@ export class DashboardService {
                 start = startOfYear(now);
                 end = endOfYear(now);
                 break;
+            case 'all':
+                start = undefined; // no filter
+                end = undefined;   // no filter
+                break;
         }
 
-        // ✅ Get settings (for currency conversion)
+        // Get settings (for currency conversion)
         const settings = await this.prisma.settings.findUnique({
             where: { userId },
         });
-
-        if (!settings) {
-            throw new BadRequestException('User settings not found');
-        }
+        if (!settings) throw new BadRequestException('User settings not found');
 
         const { defaultCurrency, USDtoIQD } = settings;
 
-        // ✅ Fetch all *non-canceled* transactions in range
+        // Build where clause
+        const whereClause: any = { status: { not: 'CANCELED' } };
+        if (start && end) {
+            whereClause.date = { gte: start, lte: end };
+        }
+
+        // Fetch transactions
         const transactions = await this.prisma.transaction.findMany({
-            where: {
-                date: { gte: start, lte: end },
-                status: { not: 'CANCELED' },
-            },
+            where: whereClause,
             select: {
                 type: true,
                 amount: true,
@@ -125,11 +129,10 @@ export class DashboardService {
             },
         });
 
-        let totalAmount = 0;   // 🔹 investor.amount
-        let totalRollover = 0; // 🔹 investor.rollover
+        let totalAmount = 0;
+        let totalRollover = 0;
 
         for (const t of transactions) {
-            // Convert to default currency
             let amt = t.amount;
             if (t.currency === 'USD' && defaultCurrency === 'IQD') {
                 amt = t.amount * USDtoIQD;
@@ -139,22 +142,16 @@ export class DashboardService {
 
             if (t.type === 'DEPOSIT') {
                 totalAmount += amt;
-
             } else if (t.type === 'WITHDRAWAL') {
                 if (t.withdrawSource === 'ROLLOVER') {
-                    // Entire withdrawal from rollover
                     totalRollover -= amt;
                 } else if (t.withdrawSource === 'AMOUNT_ROLLOVER') {
-                    // Part from amount, part from rollover
                     const fromAmount = t.withdrawFromAmount || 0;
                     const fromRollover = amt - fromAmount;
-
                     totalAmount -= fromAmount;
                     totalRollover -= fromRollover;
                 }
-
             } else if (t.type === 'PROFIT') {
-                // Profit always goes into rollover
                 totalRollover += amt;
             }
         }
