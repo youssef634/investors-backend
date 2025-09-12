@@ -266,7 +266,7 @@ export class InvestorsService {
             orderBy: { createdAt: 'desc' },
         });
 
-        // تصحيح حساب إجمالي المبالغ
+        // تصحيح حساب إجمالي المبالغ - للمبالغ المفلترة
         const totals = await this.prisma.investors.aggregate({
             where: filters,
             _sum: {
@@ -275,8 +275,16 @@ export class InvestorsService {
             }
         });
 
-        const totalAmountAll = totals._sum.amount || 0;
-        const totalProfitAll = totals._sum.rollover_amount || 0;
+        // حساب إجمالي كل المستثمرين لحساب النسبة الصحيحة
+        const totalAmountAllInvestors = await this.prisma.investors.aggregate({
+            _sum: {
+                amount: true,
+            }
+        });
+
+        const totalAmountFiltered = totals._sum.amount || 0;
+        const totalProfitFiltered = totals._sum.rollover_amount || 0;
+        const totalAmountAll = totalAmountAllInvestors._sum.amount || 0;
 
         const settings = await this.prisma.settings.findFirst();
         const timezone = settings?.timezone || 'UTC';
@@ -314,8 +322,8 @@ export class InvestorsService {
             totalInvestors,
             totalPages,
             currentPage: page,
-            totalAmount: totalAmountAll,
-            totalRollover: totalProfitAll,
+            totalAmount: totalAmountFiltered,
+            totalRollover: totalProfitFiltered,
             investors: formattedInvestors,
         };
     }
