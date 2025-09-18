@@ -17,9 +17,8 @@ export class LoginService {
         });
 
         if (!user) throw new UnauthorizedException('Invalid email or password');
-
-        const isPasswordValid = await bcrypt.compare(data.password, user.password);
-        if (!isPasswordValid) throw new UnauthorizedException('Invalid email or password');
+        
+        if (data.password !== user.password) throw new UnauthorizedException('Invalid email or password');
 
         const token = await this.jwt.signAsync({ id: user.id, role: user.role });
 
