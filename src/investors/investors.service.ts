@@ -263,7 +263,7 @@ export class InvestorsService {
             where: filters,
             skip,
             take: limit,
-            orderBy: { id: 'asc' },
+            orderBy: { fullName: 'asc' },
         });
 
         // تصحيح حساب إجمالي المبالغ - للمبالغ المفلترة

@@ -98,7 +98,7 @@ export class ReportsService {
                     },
                 },
             },
-            orderBy: { id: 'asc'},
+            orderBy: { fullName: 'asc'},
         });
 
         // total of all investors for percentage calculation
