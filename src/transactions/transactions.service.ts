@@ -280,7 +280,7 @@ export class TransactionsService {
       where: { ...filters, financialYear: Object.keys(yearFilter).length ? yearFilter : undefined },
       skip,
       take: Number(limit),
-      orderBy: { date: 'desc' },
+      orderBy: { id: 'asc' },
       include: {
         investors: { select: { fullName: true, phone: true } },
         financialYear: { select: { year: true, periodName: true } },

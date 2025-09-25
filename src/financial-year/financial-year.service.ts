@@ -494,7 +494,7 @@ export class FinancialYearService {
       where,
       skip,
       take: limit,
-      orderBy: { createdAt: 'desc' }, // keep newest first
+      orderBy: { id: 'asc' },
     });
 
     const formattedYears = await Promise.all(
