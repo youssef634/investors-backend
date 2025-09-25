@@ -215,54 +215,34 @@ export class TransactionsService {
     if (query?.investorId) filters.investorId = Number(query.investorId);
     if (query?.status) filters.status = query.status;
 
-    // Add search functionality
     if (query?.search) {
       filters.OR = [
         {
           investors: {
             fullName: {
               contains: query.search,
-              mode: 'insensitive'
-            }
-          }
-        },
-        {
-          investors: {
-            phone: {
-              contains: query.search,
-              mode: 'insensitive'
-            }
-          }
-        },
-        {
-          type: {
-            contains: query.search,
-            mode: 'insensitive'
-          }
-        },
-        {
-          currency: {
-            contains: query.search,
-            mode: 'insensitive'
-          }
-        },
-        // Search by amount (convert search string to number if possible)
-        ...(isNaN(Number(query.search)) ? [] : [
-          {
-            amount: {
-              equals: Number(query.search)
-            }
-          }
-        ]),
-        // Search by date (try to parse as date)
-        {
-          date: {
-            equals: new Date(query.search)
-          }
+              mode: 'insensitive',
+            },
+          },
         }
       ];
-    }
 
+      // Handle currency search
+      if (query.search.toUpperCase() === 'USD' || query.search.toUpperCase() === 'IQD') {
+        filters.OR.push({
+          currency: query.search.toUpperCase()
+        });
+      }
+
+      // Handle transaction type search
+      const searchUpperCase = query.search.toUpperCase();
+      if (Object.values(TransactionType).includes(searchUpperCase as TransactionType)) {
+        filters.OR.push({
+          type: searchUpperCase as TransactionType
+        });
+      }
+    }
+    
     const yearFilter: any = {};
     if (query?.year) yearFilter.year = Number(query.year);
     if (query?.periodName) yearFilter.periodName = { contains: query.periodName, mode: 'insensitive' };
@@ -280,7 +260,7 @@ export class TransactionsService {
       where: { ...filters, financialYear: Object.keys(yearFilter).length ? yearFilter : undefined },
       skip,
       take: Number(limit),
-      orderBy: { id: 'asc' },
+      orderBy: { date: 'desc' },
       include: {
         investors: { select: { fullName: true, phone: true } },
         financialYear: { select: { year: true, periodName: true } },
