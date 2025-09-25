@@ -50,4 +50,8 @@ export class GetTransactionsDto {
   @IsOptional()
   @IsEnum(TransactionStatus)
   status?: TransactionStatus;
+
+  @IsOptional()
+  @IsString()
+  search?: string; // Add search parameter for text search
 }

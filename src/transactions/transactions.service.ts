@@ -201,18 +201,67 @@ export class TransactionsService {
     const filters: any = {};
 
     if (query?.type) filters.type = query.type;
-    if (query?.minAmount || query?.maxAmount)
+    if (query?.minAmount || query?.maxAmount) {
       filters.amount = {
-        gte: query?.minAmount ?? undefined,
-        lte: query?.maxAmount ?? undefined,
+        gte: query?.minAmount ? Number(query.minAmount) : undefined,
+        lte: query?.maxAmount ? Number(query.maxAmount) : undefined,
       };
+    }
     if (query?.startDate || query?.endDate)
       filters.date = {
         gte: query?.startDate ? new Date(query.startDate) : undefined,
         lte: query?.endDate ? new Date(query.endDate) : undefined,
       };
     if (query?.investorId) filters.investorId = Number(query.investorId);
-    if (query?.status) filters.status = query.status; // <-- add this
+    if (query?.status) filters.status = query.status;
+
+    // Add search functionality
+    if (query?.search) {
+      filters.OR = [
+        {
+          investors: {
+            fullName: {
+              contains: query.search,
+              mode: 'insensitive'
+            }
+          }
+        },
+        {
+          investors: {
+            phone: {
+              contains: query.search,
+              mode: 'insensitive'
+            }
+          }
+        },
+        {
+          type: {
+            contains: query.search,
+            mode: 'insensitive'
+          }
+        },
+        {
+          currency: {
+            contains: query.search,
+            mode: 'insensitive'
+          }
+        },
+        // Search by amount (convert search string to number if possible)
+        ...(isNaN(Number(query.search)) ? [] : [
+          {
+            amount: {
+              equals: Number(query.search)
+            }
+          }
+        ]),
+        // Search by date (try to parse as date)
+        {
+          date: {
+            equals: new Date(query.search)
+          }
+        }
+      ];
+    }
 
     const yearFilter: any = {};
     if (query?.year) yearFilter.year = Number(query.year);
