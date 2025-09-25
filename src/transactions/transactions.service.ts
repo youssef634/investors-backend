@@ -176,6 +176,13 @@ export class TransactionsService {
       throw new NotFoundException('Some transactions were not found');
     }
 
+    // Cancel transactions if not already canceled
+    for (const tx of existingTransactions) {
+      if (tx.status !== 'CANCELED') {
+        await this.cancelTransaction(currentUserId, tx.id);
+      }
+    }
+
     await this.prisma.transaction.deleteMany({
       where: { id: { in: transactionIds } },
     });

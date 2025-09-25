@@ -266,7 +266,6 @@ export class FinancialYearService {
       totalProfit,
     };
   }
-  
 
   // Approve/Finalize the year and perform rollover transfers.
   async approveYear(adminId: number, role: Role, yearId: number) {
@@ -535,6 +534,8 @@ export class FinancialYearService {
             // reuse cancelTransaction logic
             await this.cancelTransactionInternal(tx, t.id);
           }
+          // Delete transaction after canceling (or if already canceled)
+          await tx.transaction.delete({ where: { id: t.id } });
         }
       }
 
