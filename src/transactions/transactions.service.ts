@@ -143,7 +143,6 @@ export class TransactionsService {
         throw new BadRequestException('Cancel would result in negative balance');
       }
 
-      // Update investor balances
       await prismaTx.investors.update({
         where: { id: tx.investorId },
         data: {
@@ -153,7 +152,6 @@ export class TransactionsService {
         },
       });
 
-      // ✅ Mark transaction as canceled instead of deleting
       await prismaTx.transaction.update({
         where: { id },
         data: { status: 'CANCELED' },
@@ -176,7 +174,6 @@ export class TransactionsService {
       throw new NotFoundException('Some transactions were not found');
     }
 
-    // Cancel transactions if not already canceled
     for (const tx of existingTransactions) {
       if (tx.status !== 'CANCELED') {
         await this.cancelTransaction(currentUserId, tx.id);
@@ -231,14 +228,12 @@ export class TransactionsService {
         }
       ];
 
-      // Handle currency search
       if (query.search.toUpperCase() === 'USD' || query.search.toUpperCase() === 'IQD') {
         filters.OR.push({
           currency: query.search.toUpperCase()
         });
       }
 
-      // Handle transaction type search
       const searchUpperCase = query.search.toUpperCase();
       if (Object.values(TransactionType).includes(searchUpperCase as TransactionType)) {
         filters.OR.push({
@@ -260,11 +255,29 @@ export class TransactionsService {
 
     const skip = (page - 1) * limit;
 
-    // Sorting logic
-    let orderBy: any = { date: 'desc' }; // default
+    let orderBy: any = { date: 'desc' }; 
     if (query?.sortBy) {
       orderBy = {};
-      orderBy[query.sortBy] = query.sortOrder === 'asc' ? 'asc' : 'desc';
+      const sortBy = query.sortBy;
+      const sortOrder = query.sortOrder === 'asc' ? 'asc' : 'desc';
+
+      if (sortBy.includes('.')) {
+        const parts = sortBy.split('.');
+        if (parts.length === 2) {
+          const [relation, field] = parts;
+          if (relation === 'investors' && ['fullName', 'phone'].includes(field)) {
+            orderBy[relation] = { [field]: sortOrder };
+          } else if (relation === 'financialYear' && field === 'year') {
+            orderBy[relation] = { [field]: sortOrder };
+          } else {
+            orderBy = { date: sortOrder };
+          }
+        } else {
+          orderBy = { date: sortOrder };
+        }
+      } else {
+        orderBy[sortBy] = sortOrder;
+      }
     }
 
     const transactions = await this.prisma.transaction.findMany({
