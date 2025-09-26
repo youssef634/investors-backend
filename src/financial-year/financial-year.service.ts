@@ -469,6 +469,8 @@ export class FinancialYearService {
       status?: string;
       startDate?: string;
       endDate?: string;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
     }
   ) {
     const limit = filters?.limit && filters.limit > 0 ? filters.limit : 10;
@@ -478,7 +480,6 @@ export class FinancialYearService {
     if (filters?.year) where.year = filters.year;
     if (filters?.status) where.status = filters.status;
 
-    // ✅ filter based on the financial year's own startDate field
     if (filters?.startDate || filters?.endDate) {
       where.startDate = {};
       if (filters.startDate) {
@@ -489,12 +490,19 @@ export class FinancialYearService {
       }
     }
 
+    // Sorting logic
+    let orderBy: any = { id: 'asc' }; // default
+    if (filters?.sortBy) {
+      orderBy = {};
+      orderBy[filters.sortBy] = filters.sortOrder === 'asc' ? 'asc' : 'desc';
+    }
+
     const total = await this.prisma.financialYear.count({ where });
     const years = await this.prisma.financialYear.findMany({
       where,
       skip,
       take: limit,
-      orderBy: { id: 'asc' },
+      orderBy,
     });
 
     const formattedYears = await Promise.all(

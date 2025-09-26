@@ -193,7 +193,11 @@ export class TransactionsService {
     };
   }
 
-  async getTransactions(currentUserId: number, page: number = 1, query?: GetTransactionsDto) {
+  async getTransactions(
+    currentUserId: number,
+    page: number = 1,
+    query?: GetTransactionsDto & { sortBy?: string; sortOrder?: 'asc' | 'desc' }
+  ) {
     const user = await this.prisma.user.findUnique({ where: { id: currentUserId } });
     if (!user) throw new ForbiddenException('User not found');
 
@@ -242,7 +246,7 @@ export class TransactionsService {
         });
       }
     }
-    
+
     const yearFilter: any = {};
     if (query?.year) yearFilter.year = Number(query.year);
     if (query?.periodName) yearFilter.periodName = { contains: query.periodName, mode: 'insensitive' };
@@ -256,11 +260,18 @@ export class TransactionsService {
 
     const skip = (page - 1) * limit;
 
+    // Sorting logic
+    let orderBy: any = { date: 'desc' }; // default
+    if (query?.sortBy) {
+      orderBy = {};
+      orderBy[query.sortBy] = query.sortOrder === 'asc' ? 'asc' : 'desc';
+    }
+
     const transactions = await this.prisma.transaction.findMany({
       where: { ...filters, financialYear: Object.keys(yearFilter).length ? yearFilter : undefined },
       skip,
       take: Number(limit),
-      orderBy: { date: 'desc' },
+      orderBy,
       include: {
         investors: { select: { fullName: true, phone: true } },
         financialYear: { select: { year: true, periodName: true } },

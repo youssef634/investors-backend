@@ -54,4 +54,12 @@ export class GetTransactionsDto {
   @IsOptional()
   @IsString()
   search?: string; // Add search parameter for text search
+
+  @IsOptional()
+  @IsString()
+  sortBy?: string;
+
+  @IsOptional()
+  @IsEnum(['asc', 'desc'], { message: 'sortOrder must be asc or desc' })
+  sortOrder?: 'asc' | 'desc';
 }

@@ -94,6 +94,8 @@ export class InvestorsController {
     @Query('minShare') minShare?: number,
     @Query('maxShare') maxShare?: number,
     @Query('email') email?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: 'asc' | 'desc',
   ) {
     return this.investorsService.getInvestors(req.user.id, page, {
       limit: limit ? Number(limit) : undefined,
@@ -105,6 +107,8 @@ export class InvestorsController {
       endDate,
       minShare: minShare ? Number(minShare) : undefined,
       maxShare: maxShare ? Number(maxShare) : undefined,
+      sortBy,
+      sortOrder,
     });
   }
 }

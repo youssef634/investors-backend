@@ -74,6 +74,8 @@ export class FinancialYearController {
     @Query('status') status?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: 'asc' | 'desc',
   ) {
     return this.financialYearService.getFinancialYears(
       req.user.id,
@@ -84,6 +86,8 @@ export class FinancialYearController {
         status: status || undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
+        sortBy,
+        sortOrder,
       },
     );
   }

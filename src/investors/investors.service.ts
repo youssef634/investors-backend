@@ -229,6 +229,8 @@ export class InvestorsService {
             endDate?: string;
             minShare?: number;
             maxShare?: number;
+            sortBy?: string;
+            sortOrder?: 'asc' | 'desc';
         },
     ) {
         await this.checkAdmin(currentUserId);
@@ -259,11 +261,18 @@ export class InvestorsService {
 
         const skip = (page - 1) * limit;
 
+        // Sorting logic
+        let orderBy: any = { fullName: 'asc' }; // default
+        if (searchFilters?.sortBy) {
+            orderBy = {};
+            orderBy[searchFilters.sortBy] = searchFilters.sortOrder === 'asc' ? 'asc' : 'desc';
+        }
+
         const investors = await this.prisma.investors.findMany({
             where: filters,
             skip,
             take: limit,
-            orderBy: { fullName: 'asc' },
+            orderBy,
         });
 
         // تصحيح حساب إجمالي المبالغ - للمبالغ المفلترة
