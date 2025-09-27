@@ -263,7 +263,7 @@ export class InvestorsService {
 
         // Sorting logic
         let orderBy: any = { fullName: 'asc' }; // default
-        if (searchFilters?.sortBy) {
+        if (searchFilters?.sortBy && searchFilters.sortBy !== 'sharePercentage') {
             orderBy = {};
             orderBy[searchFilters.sortBy] = searchFilters.sortOrder === 'asc' ? 'asc' : 'desc';
         }
