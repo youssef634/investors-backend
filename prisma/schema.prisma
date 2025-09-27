@@ -71,7 +71,7 @@ model Settings {
   model FinancialYear {
   id                Int        @id @default(autoincrement())
   year              Int
-  periodName        String?    @unique
+  periodName        String?
   totalProfit       Float
   currency          String     @default("IQD")
   startDate         DateTime
