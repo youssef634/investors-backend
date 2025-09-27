@@ -226,9 +226,9 @@ export class FinancialYearService {
         financialYearId: year.id,
         investorId: inv.id,
         amount: inv.amount,
-        percentage: weight * 100, // نسبة المشاركة الفعلية
-        totalProfit: finalProfit,
-        dailyProfit,
+        percentage: Number((weight * 100).toFixed(2)), // نسبة المشاركة الفعلية
+        totalProfit: Number(finalProfit.toFixed(2)),
+        dailyProfit: Number(dailyProfit.toFixed(2)),
         daysSoFar: inv.daysActive,
         isRollover: year.rolloverEnabled,
         createdAt: inv.createdAt,
