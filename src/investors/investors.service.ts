@@ -300,7 +300,6 @@ export class InvestorsService {
 
         let formattedInvestors = investors.map((inv) => {
             const sharePercentage = totalAmountAll > 0 ? (inv.amount / totalAmountAll) * 100 : 0;
-
             return {
                 id: inv.id,
                 fullName: inv.fullName,
@@ -316,15 +315,27 @@ export class InvestorsService {
             };
         });
 
+        // Filter by sharePercentage if needed
         if (searchFilters?.minShare !== undefined) {
             formattedInvestors = formattedInvestors.filter(
-                (inv) => inv.sharePercentage >= searchFilters.minShare!,
+                (inv) => inv.sharePercentage >= searchFilters.minShare!
             );
         }
         if (searchFilters?.maxShare !== undefined) {
             formattedInvestors = formattedInvestors.filter(
-                (inv) => inv.sharePercentage <= searchFilters.maxShare!,
+                (inv) => inv.sharePercentage <= searchFilters.maxShare!
             );
+        }
+
+        // Sort by sharePercentage if requested
+        if (searchFilters?.sortBy === 'sharePercentage') {
+            formattedInvestors = formattedInvestors.sort((a, b) => {
+                if (searchFilters.sortOrder === 'asc') {
+                    return a.sharePercentage - b.sharePercentage;
+                } else {
+                    return b.sharePercentage - a.sharePercentage;
+                }
+            });
         }
 
         return {
