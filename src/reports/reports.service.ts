@@ -293,7 +293,7 @@ export class ReportsService {
             throw new ForbiddenException('Only admins can access this report');
         }
 
-        const year = await this.prisma.financialYear.findUnique({
+        const year = await this.prisma.financialYear.findFirst({
             where: { periodName },
             select: {
                 id: true,
