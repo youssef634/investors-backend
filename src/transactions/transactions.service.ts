@@ -50,7 +50,7 @@ export class TransactionsService {
         updatedTotalAmount += amountInUSD;
 
       } else if (dto.type === TransactionType.WITHDRAWAL) {
-        if (amountInUSD > investor.amount) {
+        if (amountInUSD > investor.total_amount) {
           throw new BadRequestException('Withdrawal exceeds total balance');
         }
 
