@@ -1,15 +1,15 @@
 {
-  "name": "investors-backend",
+  "name": "loyalty-backend",
   "version": "1.0.0",
-  "description": "Backend for investors System using NestJS, Prisma, PostgreSQL",
+  "description": "Backend for Loyalty Points System using NestJS, Prisma, PostgreSQL",
   "author": "Your Name",
   "private": true,
   "license": "MIT",
   "scripts": {
     "start": "nest start",
-    "start:dev": "nest start --watch",
+    "start:dev": "nest start --watch --webpack",
     "start:prod": "node dist/main",
-    "build": "nest build",
+    "build": "nest build --webpack",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "lint": "eslint \"{src,test}/**/*.ts\" --fix",
     "test": "jest",
@@ -43,6 +43,7 @@
     "moment-timezone": "^0.6.0",
     "multer": "^2.0.2",
     "node-arabic": "^1.0.0",
+    "node-fetch": "^3.3.2",
     "nodemailer": "^7.0.5",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
@@ -81,9 +82,9 @@
     "supertest": "^6.3.3",
     "ts-jest": "^29.4.1",
     "ts-loader": "^9.4.3",
-    "ts-node": "^10.9.1",
+    "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.1.6"
+    "typescript": "^5.9.2"
   },
   "jest": {
     "moduleFileExtensions": [
