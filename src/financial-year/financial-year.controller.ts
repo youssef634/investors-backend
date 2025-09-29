@@ -70,6 +70,7 @@ export class FinancialYearController {
     @Param('page', ParseIntPipe) page: number,
     @Req() req,
     @Query('limit') limit?: number,
+    @Query('search') search?: string,
     @Query('year') year?: number,
     @Query('status') status?: string,
     @Query('startDate') startDate?: string,
@@ -82,6 +83,7 @@ export class FinancialYearController {
       page,
       {
         limit: limit ? Number(limit) : undefined,
+        search: search || undefined,
         year: year ? Number(year) : undefined,
         status: status || undefined,
         startDate: startDate || undefined,
