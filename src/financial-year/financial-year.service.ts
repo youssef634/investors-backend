@@ -464,8 +464,9 @@ export class FinancialYearService {
     userId: number,
     page = 1,
     filters?: {
-      limit?: number;
+      limit?: number; 
       year?: number;
+      search?: string;
       status?: string;
       startDate?: string;
       endDate?: string;
@@ -478,6 +479,7 @@ export class FinancialYearService {
 
     const where: any = {};
     if (filters?.year) where.year = filters.year;
+    if (filters?.search) where.periodName = { contains: filters.search, mode: 'insensitive' };
     if (filters?.status) where.status = filters.status;
 
     if (filters?.startDate || filters?.endDate) {
